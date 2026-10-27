@@ -863,7 +863,7 @@ if (item.FramesLeft > 0)
 pending_[alive++] = item;
 continue;
 }
-if (item.TurnAttempts == 0 || (item.TurnAttempts % 60) == 0)
+if (item.TurnAttempts == 0)
 item.Unit->Facing.turn(item.Facing);
 ++item.TurnAttempts;
 if (item.Unit->Facing.current() == item.Facing)
