@@ -54,7 +54,7 @@ constexpr int kHalfCell = 128;
 constexpr int kSnapSearchRadius = 5;
 constexpr int kArrivalRadius = 260;
 constexpr int kArrivalFrames = 900;
-constexpr int kFacingHoldFrames = 400;
+constexpr int kFacingHoldFrames = 90;
 // Aircraft keep re-deriving their facing from the flight model, so a pinned facing has to be
 // re-applied for a while instead of being set once.
 constexpr int kAirFacingFrames = 90;
@@ -895,16 +895,18 @@ if (item.FramesLeft > 0)
 pending_[alive++] = item;
 continue;
 }
-if (item.TurnAttempts == 0)
-item.Unit->Facing.turn(item.Facing);
-++item.TurnAttempts;
-if (item.Unit->Facing.current() == item.Facing)
-{
+// The engine keeps steering the hull towards the last leg of the path and rewrites the
+// facing on its own ticks, so a single turn() gets overwritten. Hold the pose instead:
+// set() every frame for a short window, which cannot spin the unit because it is instant.
 item.Unit->Facing.set(item.Facing);
+item.Unit->TurretFacing.set(item.Facing);
+++item.TurnAttempts;
+if (item.TurnAttempts >= kFacingHoldFrames)
+{
 item.Applied = true;
 item.FramesLeft = 0;
-Logf("formation: facing applied to %p (cell %d,%d)",
-item.Unit, item.CellX, item.CellY);
+Logf("formation: facing applied to %p (cell %d,%d) facing=%u",
+item.Unit, item.CellX, item.CellY, static_cast<unsigned>(item.Facing.value<16>()));
 }
 }
 --item.FramesLeft;
