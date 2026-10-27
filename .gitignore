@@ -1,0 +1,32 @@
+# Build output
+build/bin/
+build/obj/
+bin/
+obj/
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
+
+# Debug artefacts
+*.pdb
+*.map
+*.ilk
+*.exp
+*.lib
+*.obj
+*.idb
+
+# Runtime output
+*.log
+Enthalpy.log.*
+
+# Local test harness (not part of the plugin)
+tools/
+shots/
+
+# Editors / OS
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini
