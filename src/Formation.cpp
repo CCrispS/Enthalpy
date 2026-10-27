@@ -615,10 +615,11 @@ const double sideways = static_cast<double>(column) - (inRank - 1) * 0.5;
 const double step = static_cast<double>(spacingCells_ * kLeptonPerCell);
 const double worldX = anchor_.X + rowX * sideways * step + backX * rank * step;
 const double worldY = anchor_.Y + rowY * sideways * step + backY * rank * step;
-CellStruct ideal = {
- static_cast<short>(IRound(worldX / kLeptonPerCell)),
-static_cast<short>(IRound(worldY / kLeptonPerCell)) }
-;
+// Let the engine do the conversion: the manual version rounded, which shifts every
+// slot by half a cell and can land the cell index on the neighbouring (sometimes
+// illegal) cell depending on the direction of the row.
+const CellStruct ideal = CellClass::Coord2Cell(CoordStruct{
+static_cast<int>(worldX), static_cast<int>(worldY), anchor_.Z });
 const bool isInfantry = units_[index] && units_[index]->WhatAmI() == AbstractType::Infantry;
 int chosenX = ideal.X;
 int chosenY = ideal.Y;
@@ -636,6 +637,12 @@ CellClass* pIdealCell = MapClass::Instance->TryGetCellAt(CellStruct{
 static_cast<short>(chosenX), static_cast<short>(chosenY) }
 );
 bool idealOk = IsUsableCell(pIdealCell);
+// Two very different reasons land here: the ground itself refuses the cell (building,
+// tree, water, rock) or another slot of this same formation already claimed it. Only
+// the first one is worth a red ghost - a claimed cell is empty ground that one of the
+// selected units simply occupies for now, and painting it red was the "empty cell shown
+// as illegal" complaint.
+const bool blockedByObstacle = !idealOk && !CellOnlyHoldsMovers(pIdealCell);
 bool startCell = false;
 if (!idealOk && CellOnlyHoldsMovers(pIdealCell))
 {
@@ -650,7 +657,9 @@ idealOk = isInfantry && !claims_[claimIndex].UsedByVehicle
 }
 if (!idealOk)
 {
-snapped = true;
+// Keep the ghost green unless the ground itself is the problem; a neighbour cell is
+// picked either way so two units never target the same square.
+snapped = blockedByObstacle;
 bool found = false;
 for (int radius = 1; radius <= kSnapSearchRadius && !found; ++radius)
 {
