@@ -184,7 +184,11 @@ namespace Settings
 		values.GhostShadow = ReadBool(g_IniPath, "GhostShadow", values.GhostShadow);
 		values.ColorValid = ReadColor(g_IniPath, "GhostColorValid", values.ColorValid);
 		values.ColorInvalid = ReadColor(g_IniPath, "GhostColorInvalid", values.ColorInvalid);
-		values.ColorEdge = ReadColor(g_IniPath, "GhostColorEdge", values.ColorEdge);
+		// GhostColorValidEdge is the current name; GhostColorEdge is the pre-0.2 spelling and
+// is only consulted when the new key is absent, so existing ini files keep working.
+const DWORD legacyEdge = ReadColor(g_IniPath, "GhostColorEdge", values.ColorValidEdge);
+values.ColorValidEdge = ReadColor(g_IniPath, "GhostColorValidEdge", legacyEdge);
+values.ColorInvalidEdge = ReadColor(g_IniPath, "GhostColorInvalidEdge", values.ColorInvalidEdge);
 		values.DebugLog = ReadBool(g_IniPath, "Enthalpydebug", values.DebugLog);
 
 		// 0..4 with 0 = fully transparent and 4 = fully opaque; the ladder in between is

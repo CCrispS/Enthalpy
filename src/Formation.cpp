@@ -1165,7 +1165,7 @@ if (slot.AirHeight > 0)
 pSurface->DrawLine(&groundScreen, &screen, kColorFacing);
 }
 const DWORD ghostTint = slot.Snapped ? settings.ColorInvalid : settings.ColorValid;
-const DWORD ghostEdge = settings.ColorEdge;
+const DWORD ghostEdge = slot.Snapped ? settings.ColorInvalidEdge : settings.ColorValidEdge;
 // Rocketeer-style flying infantry are small, so their ground shadow is a small ellipse.
 TechnoClass* pUnit = units_[index];
 TechnoTypeClass* pType = pUnit ? pUnit->GetTechnoType() : nullptr;

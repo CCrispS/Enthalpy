@@ -71,7 +71,8 @@ cd Enthalpy
 | `GhostShadow` | `yes` | 剪影是否包含阴影像素 |
 | `GhostColorValid` | `0,251,0` | 合法格位剪影色（`R,G,B`） |
 | `GhostColorInvalid` | `255,0,0` | 非法/吸附格位剪影色 |
-| `GhostColorEdge` | `0,251,0` | 剪影描边色 |
+| `GhostColorValidEdge` | `0,251,0` | 合法格位的描边色 |
+| `GhostColorInvalidEdge` | `255,170,0` | 非法/吸附格位的描边色 |
 | `Enthalpydebug` | `no` | 是否写日志文件 |
 
 ## 仓库结构
