@@ -73,6 +73,7 @@ cd Enthalpy
 | `GhostColorInvalid` | `255,0,0` | 非法/吸附格位剪影色 |
 | `GhostColorValidEdge` | `0,251,0` | 合法格位的描边色 |
 | `GhostColorInvalidEdge` | `255,170,0` | 非法/吸附格位的描边色 |
+| `TargetLine` | `no` | 是否绘制“按下点 → 光标”的绿色目标线 |
 | `Enthalpydebug` | `no` | 是否写日志文件 |
 
 ## 仓库结构

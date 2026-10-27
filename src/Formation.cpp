@@ -1228,18 +1228,21 @@ ShpGhost::Draw(pSurface, slot.Image, slot.Frame, screen.X, screen.Y, ghostTint,
 opacity, 0, 0, surfaceWidth - 1, surfaceHeight - 1);
 }
 }
-CoordStruct cursorTip = {
- cursorWorld_.X, cursorWorld_.Y, cursorWorld_.Z }
-;
-Point2D anchorPoint = {
- 0, 0 }
-;
-Point2D cursorPoint = {
- 0, 0 }
-;
-pTactical->CoordsToClient(&anchor_, &anchorPoint);
-pTactical->CoordsToClient(&cursorTip, &cursorPoint);
-pSurface->DrawLine(&anchorPoint, &cursorPoint, kColorFacing);
+ if (Settings::Current().TargetLine)
+ {
+ CoordStruct cursorTip = {
+  cursorWorld_.X, cursorWorld_.Y, cursorWorld_.Z }
+ ;
+ Point2D anchorPoint = {
+  0, 0 }
+ ;
+ Point2D cursorPoint = {
+  0, 0 }
+ ;
+ pTactical->CoordsToClient(&anchor_, &anchorPoint);
+ pTactical->CoordsToClient(&cursorTip, &cursorPoint);
+ pSurface->DrawLine(&anchorPoint, &cursorPoint, kColorFacing);
+ }
 }
 bool FormationController::CaptureUnitGhost(TechnoClass* pUnit, const CoordStruct& worldPos,
 DirStruct facing, int clipWidth, int clipHeight, GhostPatch& patch){

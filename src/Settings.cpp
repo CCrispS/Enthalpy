@@ -189,6 +189,7 @@ namespace Settings
 const DWORD legacyEdge = ReadColor(g_IniPath, "GhostColorEdge", values.ColorValidEdge);
 values.ColorValidEdge = ReadColor(g_IniPath, "GhostColorValidEdge", legacyEdge);
 values.ColorInvalidEdge = ReadColor(g_IniPath, "GhostColorInvalidEdge", values.ColorInvalidEdge);
+	values.TargetLine = ReadBool(g_IniPath, "TargetLine", values.TargetLine);
 		values.DebugLog = ReadBool(g_IniPath, "Enthalpydebug", values.DebugLog);
 
 		// 0..4 with 0 = fully transparent and 4 = fully opaque; the ladder in between is

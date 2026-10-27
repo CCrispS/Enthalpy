@@ -34,7 +34,8 @@ namespace Settings
 		// engine's 16 bit 565 pixels.  Defaults reproduce the original green / red look.
 		DWORD ColorValid = 0x03E0;    // 0,251,0  legal cell
 		DWORD ColorInvalid = 0xF800;  // 255,0,0  illegal cell
-		DWORD ColorValidEdge = 0x03E0;   // 0,251,0    outline of a legal cell
+		bool TargetLine = false;            // draw the anchor -> cursor line
+	DWORD ColorValidEdge = 0x03E0;   // 0,251,0    outline of a legal cell
 DWORD ColorInvalidEdge = 0xFD40; // 255,170,0  outline of a snapped / illegal cell
 
 		// Whether the DLL writes a log file.  Off by default.
