@@ -181,8 +181,18 @@ return false;
 const LandType land = pCell->LandType;
 if (land == LandType::Water || land == LandType::Rock || land == LandType::Wall)
 return false;
-if (pCell->GetContent() || pCell->FirstObject)
+// Only real obstacles make a cell illegal: a building, or a terrain object such as a tree
+// or a rock. Units and infantry that merely stand on the cell are not obstacles - the
+// formation orders them away - so rejecting those cells painted dense rows red even though
+// the tanks could drive straight onto them.
+if (pCell->GetBuilding())
 return false;
+for (ObjectClass* pObject = pCell->FirstObject; pObject; pObject = pObject->NextObject)
+{
+const AbstractType what = pObject->WhatAmI();
+if (what == AbstractType::Building || what == AbstractType::Terrain)
+return false;
+}
 return true;
 }}
 
