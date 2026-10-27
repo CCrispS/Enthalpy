@@ -1098,31 +1098,27 @@ Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 			const bool inCell = WithinCell(pTechno, slots_[index].CellX, slots_[index].CellY);
 			if (index < kMaxUnits && (dist <= kArrivalRadius || inCell))
 				wasHome_[index] = true;
-			// A unit sitting in its cell must not be talked into Area Guard: Area Guard walks the
-			// unit back to the area it was told to guard, which is where it started. Teams hand
-			// Area Guard out on their own, so pin the unit to a plain Guard every frame instead.
-			if (inCell && index < kMaxUnits && pKeepCell && pTechno->CurrentMission != Mission::Guard &&
-				(pTechno->CurrentMission == Mission::Area_Guard || pTechno->CurrentMission == Mission::Move))
+			// Keep the unit on a plain Move whose destination is its own cell. Move is the only
+			// mission the engine will not turn into a walk-back: Guard remembers the guard cell
+			// and Area Guard patrols the area it was assigned, which for a freshly ordered unit
+			// is where it came from. Re-issuing Move on the cell every time the engine has
+			// changed the mission means the unit simply stands there, whichever mission a team
+			// script hands it.
+			if (index < kMaxUnits && pKeepCell &&
+				(pTechno->CurrentMission != Mission::Move || pFoot->Destination != pKeepCell))
 			{
-				pTechno->ForceMission(Mission::Guard);
-				if ((trackFrames_ % 60) == 0)
-					Logf("pin: %s %p was mission=%d in cell (%d,%d)", pType ? pType->ID : "?", pTechno,
-						static_cast<int>(pTechno->CurrentMission), slots_[index].CellX, slots_[index].CellY);
+				if ((trackFrames_ % 60) == 0 && pTechno->CurrentMission != Mission::Move)
+					Logf("pin: %s %p was mission=%d in cell (%d,%d) dist=%lld", pType ? pType->ID : "?",
+						pTechno, static_cast<int>(pTechno->CurrentMission),
+						slots_[index].CellX, slots_[index].CellY, dist);
+				pTechno->SetDestination(pKeepCell, true);
+				pTechno->ForceMission(Mission::Move);
 			}
-			if (index < kMaxUnits && wasHome_[index] && dist > 600)
-			{
-				if ((trackFrames_ % 30) == 0)
-					Logf("ALERT: %s %p left its cell, dist=%lld mission=%d dest=%p cell=(%d,%d) keep=%d",
-						pType ? pType->ID : "?", pTechno, dist,
-						static_cast<int>(pTechno->CurrentMission), pFoot->Destination,
-						slots_[index].CellX, slots_[index].CellY, keepTries_[index]);
-				if (pKeepCell && keepTries_[index] < kMaxKeepTries && (trackFrames_ % 30) == 0)
-				{
-					++keepTries_[index];
-					pTechno->SetDestination(pKeepCell, true);
-					pTechno->ForceMission(Mission::Move);
-				}
-			}
+			if (index < kMaxUnits && wasHome_[index] && dist > 600 && (trackFrames_ % 30) == 0)
+				Logf("ALERT: %s %p off its cell, dist=%lld mission=%d dest=%p cell=(%d,%d)",
+					pType ? pType->ID : "?", pTechno, dist,
+					static_cast<int>(pTechno->CurrentMission), pFoot->Destination,
+					slots_[index].CellX, slots_[index].CellY);
 			if ((trackFrames_ % 60) == 0)
 				Logf("track: %s %p dist=%lld mission=%d dest=%p cell=(%d,%d)",
 					pType ? pType->ID : "?", pTechno, dist,
