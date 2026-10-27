@@ -248,6 +248,8 @@ private:
 
 	bool leftWasDown_ = false;
 	bool rightWasDown_ = false;
+	// True from the moment both buttons were seen held until the right button comes up.
+	bool gestureLatch_ = false;
 	bool leftReleasedFirst_ = false;
 	int reassertFrames_ = 0;
 	// How often a unit that stopped short of its cell may be nudged again; stops the

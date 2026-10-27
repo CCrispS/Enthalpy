@@ -935,6 +935,10 @@ pUnitType->GetImage() ? 1 : 0, pUnitType->MainVoxel.VXL ? 1 : 0);
 const bool leftDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 const bool rightDown = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
 const bool bothDown = leftDown && rightDown;
+if (bothDown)
+	gestureLatch_ = true;
+if (!rightDown)
+	gestureLatch_ = false;
 const bool leftPressed = leftDown && !leftWasDown_;
 const bool rightPressed = rightDown && !rightWasDown_;
 const bool leftReleased = !leftDown && leftWasDown_;
@@ -1083,7 +1087,11 @@ leftWasDown_ = leftDown;
 rightWasDown_ = rightDown;
 }
 bool FormationController::ShouldSuppressClick(){
-const bool suppress = state_ == State::Dragging || suppressFrames_ > 0 || BothMouseButtonsDown() || RightButtonDown();
+// Suppress only while a formation gesture is (or may be) under way: the right button
+// must be held AND the left button must have been down at some point during that hold.
+// Suppressing every right-button hold broke the plain right click that clears a selection.
+const bool rightDown = RightButtonDown();
+const bool suppress = state_ == State::Dragging || suppressFrames_ > 0 || (rightDown && gestureLatch_);
 if (suppress != wasSuppressing_)
 {
 wasSuppressing_ = suppress;
