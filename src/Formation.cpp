@@ -1549,6 +1549,51 @@ static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 	}
 	return pUnit;
 }
+// The cache is keyed by type + facing bucket + slope, so the borrowed draw does not
+// have to happen on the destination cell at all.  Capturing on a bare cell instead of
+// one that carries a tree or a building removes the only remaining way an occluder can
+// bite a silhouette: the capture box is flooded with a sentinel and the depth buffer is
+// pushed to the far plane, but an object standing in the box still paints its own pixels
+// back over the box after the flood, and those pixels then read as "not the sentinel"
+// and survive as a hole in the mask forever (the mask is cached per type).
+static CoordStruct PickCapturePos(const CoordStruct& destination)
+{
+	CellStruct cell = CellClass::Coord2Cell(destination);
+	CellClass* pDest = MapClass::Instance ? MapClass::Instance->TryGetCellAt(cell) : nullptr;
+	const int slope = pDest ? static_cast<int>(pDest->SlopeIndex) : 0;
+
+	auto usable = [slope](CellClass* pCell)
+	{
+		if (!pCell)
+			return false;
+		if (pCell->GetBuilding())
+			return false;
+		if (static_cast<int>(pCell->SlopeIndex) != slope)
+			return false;
+		return pCell->FirstObject == nullptr;
+	};
+
+	if (usable(pDest))
+		return pDest->GetCoordsWithBridge();
+
+	for (int radius = 1; radius <= 6; ++radius)
+	{
+		for (int dy = -radius; dy <= radius; ++dy)
+		{
+			for (int dx = -radius; dx <= radius; ++dx)
+			{
+				if ((dx > -radius && dx < radius) && (dy > -radius && dy < radius))
+					continue;
+				CellClass* pCell = MapClass::Instance ? MapClass::Instance->TryGetCellAt(CellStruct{ static_cast<short>(cell.X + dx), static_cast<short>(cell.Y + dy) }) : nullptr;
+				if (usable(pCell))
+					return pCell->GetCoordsWithBridge();
+			}
+		}
+	}
+
+	return destination;
+}
+
 
 bool FormationController::CaptureUnitGhostRaw(TechnoClass* pUnit, const CoordStruct& worldPos,
 DirStruct facing, int clipWidth, int clipHeight, GhostPatch& patch){
@@ -2147,7 +2192,11 @@ if (slotIndex < 0)
 continue;
 ++captureCount;
 GhostCacheEntry& entry = cache[slotIndex];
-if (!CaptureUnitGhost(FindCaptureDonor(pUnit, pType), centre, facingDir_, clipWidth, clipHeight, entry.Patch))
+			// Capture on bare ground when the destination cell carries a tree or a building,
+			// so an object can never paint a hole into the cached silhouette.
+			const CoordStruct capturePos = PickCapturePos(centre);
+			{ const CellStruct d = CellClass::Coord2Cell(centre); const CellStruct c = CellClass::Coord2Cell(capturePos); if (d.X != c.X || d.Y != c.Y) Logf("ghost capture moved off the obstructed cell: dest=(%d,%d) capture=(%d,%d)", d.X, d.Y, c.X, c.Y); }
+			if (!CaptureUnitGhost(FindCaptureDonor(pUnit, pType), capturePos, facingDir_, clipWidth, clipHeight, entry.Patch))
 continue;
 		// A borrowed draw can come out as a sliver when the unit is mid-move or the
 		// locomotor matrix has not caught up with the requested facing.  Such a patch
