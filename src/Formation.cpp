@@ -1821,7 +1821,10 @@ const DirStruct oldFacing = pUnit->Facing.target();
 const DirStruct oldTurretFacing = pUnit->TurretFacing.target();
 const bool oldNoShadow = pType->NoShadow;
 const int oldShadowIndex = pType->ShadowIndex;
-	RectangleStruct clip = { 0, 0, clipWidth, clipHeight };
+	// Clip the borrowed draw to the patch box. The engine happily paints outside the box for tall
+	// or tilted models, and those stray pixels stay on screen after the restore: they look like a
+	// silhouette that ignores GhostOpacity, and only vanish when something redraws that area.
+	RectangleStruct clip = { capLeft, capTop, capRight - capLeft, capBottom - capTop };
 ILocomotion* pLoco = nullptr;
 int ownSlope = -1;
 {
