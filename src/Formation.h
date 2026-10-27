@@ -105,9 +105,9 @@ private:
 	// Wide enough for the broadest side-on vehicle silhouette; the engine draws a tank
 	// noticeably wider than one cell, and a box that clips it produced half a ghost.
 	static constexpr int kGhostWidth = 192;
-	static constexpr int kGhostHeight = 192;
+	static constexpr int kGhostHeight = 224;
 	static constexpr int kGhostHalfWidth = 96;
-	static constexpr int kGhostTopAbove = 128;
+	static constexpr int kGhostTopAbove = 144;
 
 	struct GhostPatch
 	{

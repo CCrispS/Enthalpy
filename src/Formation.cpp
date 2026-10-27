@@ -1561,14 +1561,19 @@ static CoordStruct PickCapturePos(const CoordStruct& destination)
 	CellStruct cell = CellClass::Coord2Cell(destination);
 	CellClass* pDest = MapClass::Instance ? MapClass::Instance->TryGetCellAt(cell) : nullptr;
 	const int slope = pDest ? static_cast<int>(pDest->SlopeIndex) : 0;
+	const bool isRamp = pDest ? pDest->Tile_Is_Ramp() : false;
 
-	auto usable = [slope](CellClass* pCell)
+	auto usable = [slope, isRamp](CellClass* pCell)
 	{
 		if (!pCell)
 			return false;
 		if (pCell->GetBuilding())
 			return false;
 		if (static_cast<int>(pCell->SlopeIndex) != slope)
+			return false;
+		// The tender spot is the tilt: it comes from whether the cell is a ramp at all, so a
+		// flat replacement cell must never stand in for a ramp cell.
+		if (pCell->Tile_Is_Ramp() != isRamp)
 			return false;
 		return pCell->FirstObject == nullptr;
 	};
@@ -1675,16 +1680,16 @@ target.Z = cellPos.Z;
 	::memset(shadowFlag, 0, sizeof(shadowFlag));
 	const int capLeft = (patch.Left > kGhostMargin) ? patch.Left - kGhostMargin : 0;
 	const int capTop = (patch.Top > kGhostMargin) ? patch.Top - kGhostMargin : 0;
-	int capRight = patch.Left + kGhostWidth + kGhostMargin;
-	int capBottom = patch.Top + kGhostHeight + kGhostMargin;
+	int capRight = patch.Left + kGhostWidth + kGhostMargin;    // exclusive
+	int capBottom = patch.Top + kGhostHeight + kGhostMargin;   // exclusive
 	const int surfWidth = pSurface->GetWidth();
 	const int surfHeight = pSurface->GetHeight();
-	if (capRight > surfWidth - 1) capRight = surfWidth - 1;
-	if (capBottom > surfHeight - 1) capBottom = surfHeight - 1;
+	if (capRight > surfWidth) capRight = surfWidth;
+	if (capBottom > surfHeight) capBottom = surfHeight;
 	Point2D pixel = { 0, 0 };
-	for (int y = capTop; y <= capBottom; ++y)
+	for (int y = capTop; y < capBottom; ++y)
 	{
-		for (int x = capLeft; x <= capRight; ++x)
+		for (int x = capLeft; x < capRight; ++x)
 		{
 			pixel.X = static_cast<short>(x);
 			pixel.Y = static_cast<short>(y);
@@ -1802,10 +1807,10 @@ pUnit->Facing.set(oldFacing);
 pUnit->TurretFacing.set(oldTurretFacing);
 if (airCapture && pLoco)
 pLoco->Do_Turn(oldFacing);
-	for (int y = capTop; y <= capBottom; ++y)
+	for (int y = capTop; y < capBottom; ++y)
 	{
 		const int insideY = y - patch.Top;
-		for (int x = capLeft; x <= capRight; ++x)
+		for (int x = capLeft; x < capRight; ++x)
 		{
 			const int insideX = x - patch.Left;
 			pixel.X = static_cast<short>(x);
@@ -1832,11 +1837,13 @@ pLoco->Do_Turn(oldFacing);
 
 	const bool bodyOk = renderPass(true, patch.BodyMask, false);
 	const bool fullOk = bodyOk && renderPass(false, patch.Mask, false);
-	const bool behindOk = fullOk && renderPass(false, behindMask, true);
+	// A third DrawBehind pass used to run here; it painted no pixels for any unit type on this
+	// engine, so it only cost a full box walk per capture.
+	const bool behindOk = fullOk;
 	// Put the flooded ground back before anything else can look at the surface.
-	for (int y = capTop; y <= capBottom; ++y)
+	for (int y = capTop; y < capBottom; ++y)
 	{
-		for (int x = capLeft; x <= capRight; ++x)
+		for (int x = capLeft; x < capRight; ++x)
 		{
 			pixel.X = static_cast<short>(x);
 			pixel.Y = static_cast<short>(y);
