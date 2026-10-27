@@ -1082,44 +1082,52 @@ Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 	if (trackFrames_ > 0)
 	{
 		--trackFrames_;
-		if ((trackFrames_ % 60) == 0)
+		for (int index = 0; index < unitCount_ && index < slotCount_; ++index)
 		{
-			for (int index = 0; index < unitCount_ && index < slotCount_; ++index)
+			TechnoClass* pTechno = units_[index];
+			if (!pTechno || !IsAlive(pTechno))
+				continue;
+			TechnoTypeClass* pType = pTechno->GetTechnoType();
+			auto pFoot = static_cast<FootClass*>(pTechno);
+			CellClass* pKeepCell = MapClass::Instance->TryGetCellAt(CellStruct{
+				static_cast<short>(slots_[index].CellX), static_cast<short>(slots_[index].CellY) });
+			const CoordStruct target = CellCentre(slots_[index].CellX, slots_[index].CellY, 0, 0);
+			const long long dx = static_cast<long long>(pTechno->Location.X) - target.X;
+			const long long dy = static_cast<long long>(pTechno->Location.Y) - target.Y;
+			const long long dist = static_cast<long long>(sqrt(static_cast<double>(static_cast<double>(dx) * dx + static_cast<double>(dy) * dy)));
+			const bool inCell = WithinCell(pTechno, slots_[index].CellX, slots_[index].CellY);
+			if (index < kMaxUnits && (dist <= kArrivalRadius || inCell))
+				wasHome_[index] = true;
+			// A unit sitting in its cell must not be talked into Area Guard: Area Guard walks the
+			// unit back to the area it was told to guard, which is where it started. Teams hand
+			// Area Guard out on their own, so pin the unit to a plain Guard every frame instead.
+			if (inCell && index < kMaxUnits && pKeepCell && pTechno->CurrentMission != Mission::Guard &&
+				(pTechno->CurrentMission == Mission::Area_Guard || pTechno->CurrentMission == Mission::Move))
 			{
-				TechnoClass* pTechno = units_[index];
-				if (!pTechno || !IsAlive(pTechno))
-					continue;
-				TechnoTypeClass* pType = pTechno->GetTechnoType();
-				auto pFoot = static_cast<FootClass*>(pTechno);
-				const CoordStruct target = CellCentre(slots_[index].CellX, slots_[index].CellY, 0, 0);
-				const long long dx = static_cast<long long>(pTechno->Location.X) - target.X;
-				const long long dy = static_cast<long long>(pTechno->Location.Y) - target.Y;
-				const long long dist = static_cast<long long>(sqrt(static_cast<double>(static_cast<double>(dx) * dx + static_cast<double>(dy) * dy)));
-				if (dist <= kArrivalRadius && index < kMaxUnits)
-					wasHome_[index] = true;
-				if (wasHome_[index] && dist > 600)
-				{
+				pTechno->ForceMission(Mission::Guard);
+				if ((trackFrames_ % 60) == 0)
+					Logf("pin: %s %p was mission=%d in cell (%d,%d)", pType ? pType->ID : "?", pTechno,
+						static_cast<int>(pTechno->CurrentMission), slots_[index].CellX, slots_[index].CellY);
+			}
+			if (index < kMaxUnits && wasHome_[index] && dist > 600)
+			{
+				if ((trackFrames_ % 30) == 0)
 					Logf("ALERT: %s %p left its cell, dist=%lld mission=%d dest=%p cell=(%d,%d) keep=%d",
 						pType ? pType->ID : "?", pTechno, dist,
 						static_cast<int>(pTechno->CurrentMission), pFoot->Destination,
-						slots_[index].CellX, slots_[index].CellY, index < kMaxUnits ? keepTries_[index] : -1);
-					if (index < kMaxUnits && keepTries_[index] < kMaxKeepTries && trackFrames_ > 900)
-					{
-						CellClass* pKeepCell = MapClass::Instance->TryGetCellAt(CellStruct{
-							static_cast<short>(slots_[index].CellX), static_cast<short>(slots_[index].CellY) });
-						if (pKeepCell)
-						{
-							++keepTries_[index];
-							pTechno->SetDestination(pKeepCell, true);
-							pTechno->ForceMission(Mission::Move);
-						}
-					}
+						slots_[index].CellX, slots_[index].CellY, keepTries_[index]);
+				if (pKeepCell && keepTries_[index] < kMaxKeepTries && (trackFrames_ % 30) == 0)
+				{
+					++keepTries_[index];
+					pTechno->SetDestination(pKeepCell, true);
+					pTechno->ForceMission(Mission::Move);
 				}
+			}
+			if ((trackFrames_ % 60) == 0)
 				Logf("track: %s %p dist=%lld mission=%d dest=%p cell=(%d,%d)",
 					pType ? pType->ID : "?", pTechno, dist,
 					static_cast<int>(pTechno->CurrentMission), pFoot->Destination,
 					slots_[index].CellX, slots_[index].CellY);
-			}
 		}
 	}
 switch (state_)

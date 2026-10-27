@@ -1,5 +1,13 @@
 # 更新日志
 
+## 2026-10-27 · Area Guard 把单位带回出发地（真因）
+
+- 日志证据：`ALERT: CAOS ... mission=11 dest=0x1850C040` 反复出现，`mission=11` 就是 `Mission::Area_Guard`；狂兽人则是 `mission=2`（Move）且 `dest` 指向别的格子。
+- 机制：`Area_Guard` 的含义是“回到并巡回我负责守卫的区域”——那个区域正是单位出发的地方。小队/引擎在单位完成我方 Move 之后会给它派 Area Guard，于是它走回去巡逻；上一版只在 `mission != Guard` 时钉 Guard，正好把 Area_Guard 漏过去了。
+- 修复：
+  - 只要单位落在自己的目标格里，而当前 mission 是 `Area_Guard` 或 `Move`，每帧强制改回 `Mission::Guard`（原地守卫，不会再往守护区走）。
+  - 漂出 600 leptons 的单位继续按 `ALERT` 记录，并在 25 秒窗口内最多回拉 8 次（`kMaxKeepTries = 8`，每 30 帧一次），把它按回自己的格子。
+- 由于是每帧纠正，即使小队脚本反复派 Area Guard，画面上单位也停在自己的格子。
 ## 2026-10-27 · 到位后被拉回出发地：跟踪与回拉
 
 - 现象：个别单位（精神突击车、狂兽人）到达目的地后，过一会儿又回到出发地。

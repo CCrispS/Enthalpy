@@ -264,7 +264,7 @@ private:
 	int reassertTries_[256] = {};
 	bool wasHome_[256] = {};
 	int keepTries_[256] = {};
-	static constexpr int kMaxKeepTries = 3;
+	static constexpr int kMaxKeepTries = 8;
 	static constexpr int kMaxReasserts = 2;
 
 	PendingFacing pending_[256] = {};
