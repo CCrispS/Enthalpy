@@ -37,6 +37,13 @@ constexpr int kCooldownFrames = 45;
 constexpr int kCapturesPerFrame = 3;
 constexpr DWORD kColorGroundShadow = 0x0000;
 constexpr DWORD kColorGhostShadow = 0x0320;
+
+// The capture box is flooded with this colour before the borrowed draw, so the mask means
+// 'pixels the unit painted' instead of 'pixels that differ from the last frame'.  Diffing
+// against the last frame let trees, buildings and units sitting on the capture spot punch
+// holes into the silhouette, and since the shape is cached per type those holes then showed
+// up on every ghost of that type.
+constexpr DWORD kCaptureSentinel = 0xF81F;
 // dark shade of the ghost green
    
 constexpr int kLeptonPerCell = 256;
@@ -1244,6 +1251,34 @@ opacity, 0, 0, surfaceWidth - 1, surfaceHeight - 1);
  pSurface->DrawLine(&anchorPoint, &cursorPoint, kColorFacing);
  }
 }
+// Drawing a unit that is mid-move borrows its animated pose: infantry come out as a narrow
+// walking profile and vehicles use whatever track pose the engine last computed, which is
+// how slivers ended up in the cache and then on every ghost of that type.  Prefer a
+// stationary unit of the same type as the donor for the capture.
+static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
+{
+	if (!pUnit)
+		return pUnit;
+	auto pFoot = static_cast<FootClass*>(pUnit);
+	if (!pFoot->Destination)
+		return pUnit;
+	if (!TechnoClass::Array)
+		return pUnit;
+	for (int i = 0; i < TechnoClass::Array->Count; ++i)
+	{
+		TechnoClass* pOther = TechnoClass::Array->Items[i];
+		if (!pOther || pOther == pUnit || pOther->GetTechnoType() != pType)
+			continue;
+		auto pOtherFoot = static_cast<FootClass*>(pOther);
+		if (pOtherFoot->Destination)
+			continue;
+		if (pOther->InLimbo || !pOther->IsAlive)
+			continue;
+		return pOther;
+	}
+	return pUnit;
+}
+
 bool FormationController::CaptureUnitGhost(TechnoClass* pUnit, const CoordStruct& worldPos,
 DirStruct facing, int clipWidth, int clipHeight, GhostPatch& patch){
 if (!pUnit || !TacticalClass::Instance)
@@ -1328,6 +1363,7 @@ target.Z = cellPos.Z;
 			pixel.X = static_cast<short>(x);
 			pixel.Y = static_cast<short>(y);
 			before[(y - capTop) * kBeforeStride + (x - capLeft)] = pSurface->GetPixel(&pixel);
+			pSurface->SetPixel(&pixel, kCaptureSentinel);
 		}
 	}
 const CoordStruct oldLocation = pUnit->GetCoords();
@@ -1349,7 +1385,9 @@ if (pLoco)
 const CellStruct ownCell = CellClass::Coord2Cell(oldLocation);
 if (CellClass* pOwn = MapClass::Instance->TryGetCellAt(ownCell))
 ownSlope = pOwn->SlopeIndex;
-pLoco->Force_New_Slope(pDest->SlopeIndex);
+	// Only a real ramp has a meaningful slope index; building footprints and flat
+	// ground report values that make the locomotor draw a degenerate sliver.
+	pLoco->Force_New_Slope(pDest->Tile_Is_Ramp() ? static_cast<int>(pDest->SlopeIndex) : 0);
 }
 }
 }
@@ -1361,7 +1399,10 @@ auto renderPass = [&](bool noShadow, unsigned char* outMask, bool useBehind) -> 
 {
 pType->NoShadow = noShadow;
 pType->ShadowIndex = noShadow ? -1 : oldShadowIndex;
-pUnit->Location = target;
+		// The silhouette's shape depends on the borrowed unit's facing and slope, not on
+		// where it stands: keeping its own Location avoids the degenerate draws that
+		// happened when the destination fell on a building footprint or an odd cell.
+		// (The destination's slope is still applied through Force_New_Slope above.)
 pUnit->Facing.set(facing);
 pUnit->TurretFacing.set(facing);
 // Aircraft and jumpjets draw from their locomotor heading, not from Facing alone, so the
@@ -1390,7 +1431,6 @@ pLoco->Do_Turn(facing);
 		{
 			pUnit->Draw(&drawPoint, &clip);
 		}
-pUnit->Location = oldLocation;
 pUnit->Facing.set(oldFacing);
 pUnit->TurretFacing.set(oldTurretFacing);
 if (airCapture && pLoco)
@@ -1407,7 +1447,7 @@ pLoco->Do_Turn(oldFacing);
 			if (insideX >= 0 && insideX < kGhostWidth && insideY >= 0 && insideY < kGhostHeight)
 			{
 				const DWORD painted = pSurface->GetPixel(&pixel);
-				const bool changed = (painted != origin);
+				const bool changed = (painted != kCaptureSentinel);
 				outMask[insideY * kGhostWidth + insideX] = changed ? 1 : 0;
 
 				// Whatever the mask picked up that is markedly darker than the ground it covers is
@@ -1417,7 +1457,6 @@ pLoco->Do_Turn(oldFacing);
 					paintedBuf[insideY * kGhostWidth + insideX] = painted;
 				(void)changed;
 			}
-			pSurface->SetPixel(&pixel, origin);
 	}
 
 	}
@@ -1427,6 +1466,16 @@ pLoco->Do_Turn(oldFacing);
 	const bool bodyOk = renderPass(true, patch.BodyMask, false);
 	const bool fullOk = bodyOk && renderPass(false, patch.Mask, false);
 	const bool behindOk = fullOk && renderPass(false, behindMask, true);
+	// Put the flooded ground back before anything else can look at the surface.
+	for (int y = capTop; y <= capBottom; ++y)
+	{
+		for (int x = capLeft; x <= capRight; ++x)
+		{
+			pixel.X = static_cast<short>(x);
+			pixel.Y = static_cast<short>(y);
+			pSurface->SetPixel(&pixel, before[(y - capTop) * kBeforeStride + (x - capLeft)]);
+		}
+	}
 	(void)behindOk;
 	if (!bodyOk || !fullOk)
 		return false;
@@ -1740,8 +1789,20 @@ if (slotIndex < 0)
 continue;
 ++captureCount;
 GhostCacheEntry& entry = cache[slotIndex];
-if (!CaptureUnitGhost(pUnit, centre, facingDir_, clipWidth, clipHeight, entry.Patch))
+if (!CaptureUnitGhost(FindCaptureDonor(pUnit, pType), centre, facingDir_, clipWidth, clipHeight, entry.Patch))
 continue;
+		// A borrowed draw can come out as a sliver when the unit is mid-move or the
+		// locomotor matrix has not caught up with the requested facing.  Such a patch
+		// must never enter the cache: it would be reused by every ghost of that type.
+		int bodyPixels = 0;
+		for (int cell = 0; cell < kGhostWidth * kGhostHeight; ++cell)
+			bodyPixels += entry.Patch.BodyMask[cell] ? 1 : 0;
+		const int bodyFloor = (pUnit->WhatAmI() == AbstractType::Infantry) ? 60 : 300;
+		if (bodyPixels < bodyFloor)
+		{
+			Logf("ghost capture rejected: type=%p facing=%u body=%d", pType, quantised, bodyPixels);
+			continue;
+		}
 entry.Type = pType;
 entry.Facing = quantised;
 entry.CellKey = cellKey;
