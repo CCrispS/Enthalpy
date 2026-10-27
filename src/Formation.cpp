@@ -1042,6 +1042,11 @@ const long long dy = static_cast<long long>(pTechno->Location.Y) - target.Y;
 		// "unit returns to the start point" symptom. Leaving the finished move alone is harmless.
 		if (index < kMaxUnits)
 			reassertTries_[index] = kMaxReasserts;
+		// Pin the unit with a fresh Guard mission started on this very cell: the engine's guard
+		// target then points here instead of the cell the unit stood on when it got the order,
+		// which is what walks an arrived unit back to its old position.
+		if (pTechno->CurrentMission != Mission::Guard)
+			pTechno->ForceMission(Mission::Guard);
 		continue;
 	}
 	allHome = false;
@@ -1054,7 +1059,6 @@ const long long dy = static_cast<long long>(pTechno->Location.Y) - target.Y;
 		++reassertTries_[index];
 	}
 }
-if (allHome)
 reassertFrames_ = 0;
 }
 if (!leftDown && !rightDown)
