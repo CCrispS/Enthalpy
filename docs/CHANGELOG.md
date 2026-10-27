@@ -1,5 +1,12 @@
 # 更新日志
 
+## 2026-10-27 · 被钉住的单位无法再用左键指挥
+
+- 现象：`DefaultToGuardArea` 类型（精神突击车等）被整局钉住后，选中它们再左键下令无效——单位被锁在原地。
+- 原因：钉住动作每帧把任务改回 `Move` 并把 destination 换回自己的格子，而玩家的左键指令在同一帧被写入，随即被覆盖；日志里只能看到 `pin:`，看不到任何"让位"记录。
+- 修复：在点击挂钩（`0x692423`）里识别"引擎这次要处理点击"的时机——若此时被守护名单里的单位处于选中状态，且确认是一次新的左键按下（`GetAsyncKeyState(VK_LBUTTON)` 上升沿，避免中键松开误触发），就置 `releaseRequested_`；`Update()` 在钉住之前整体释放守护名单（`permanent_[i]=false`、`trackFrames_=0`、`released_[i]=true`），并记录 `keep: released the whole keeper so the player's click can command them`。
+- 另外加了 90 帧的 `releaseGuard_` 宽限期，避免列队刚落地那一下被自己的释放逻辑打断。
+- 代价：玩家一旦用左键指挥这些单位，本次列队的守护就整体解除；再列队会重新建立。
 ## 2026-10-27 · 到位单位改用 Move 守住，不再用 Guard
 
 - 观察：上一版把到达的单位钉成 `Mission::Guard`，日志里仍能看到 `CAOS ... mission=11`（Area_Guard）把单位带回出发地、`BRUTE ... mission=2` 带着别人的 `dest` 跑开；`pin:`/`ALERT:` 计数 42/48，个别单位 `keep` 用完 8 次仍在 600+ leptons 外。

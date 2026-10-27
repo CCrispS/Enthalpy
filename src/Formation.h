@@ -264,6 +264,9 @@ private:
 	int reassertTries_[256] = {};
 	bool wasHome_[256] = {};
 	bool permanent_[256] = {};
+	bool released_[256] = {};
+	bool releaseRequested_ = false;
+	int releaseGuard_ = 0;
 	int permanentCount_ = 0;
 	DWORD lastPinLog_ = 0;
 	int keepTries_[256] = {};

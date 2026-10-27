@@ -800,12 +800,14 @@ lastCellY = firstCellY;
 
 void FormationController::CommitOrders(){
 	permanentCount_ = 0;
+	releaseGuard_ = 90;
 	for (int i = 0; i < kMaxUnits; ++i)
 	{
 		reassertTries_[i] = 0;
 		wasHome_[i] = false;
 		keepTries_[i] = 0;
 		permanent_[i] = false;
+		released_[i] = false;
 	}
 int issued = 0;
 pendingCount_ = 0;
@@ -1094,6 +1096,20 @@ lastLogged = live;
 Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 }
 }
+	if (releaseGuard_ > 0)
+		--releaseGuard_;
+	if (releaseRequested_)
+	{
+		releaseRequested_ = false;
+		permanentCount_ = 0;
+		trackFrames_ = 0;
+		for (int i = 0; i < kMaxUnits; ++i)
+		{
+			permanent_[i] = false;
+			released_[i] = true;
+		}
+		Logf("keep: released the whole keeper so the player's click can command them");
+	}
 	if (trackFrames_ > 0)
 		--trackFrames_;
 	if (trackFrames_ > 0 || permanentCount_ > 0)
@@ -1101,6 +1117,8 @@ Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 		for (int index = 0; index < unitCount_ && index < slotCount_; ++index)
 		{
 			if (trackFrames_ == 0 && !permanent_[index])
+				continue;
+			if (released_[index])
 				continue;
 			TechnoClass* pTechno = units_[index];
 			if (!pTechno || !IsAlive(pTechno))
@@ -1116,6 +1134,16 @@ Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 			const bool inCell = WithinCell(pTechno, slots_[index].CellX, slots_[index].CellY);
 			if (index < kMaxUnits && (dist <= kArrivalRadius || inCell))
 				wasHome_[index] = true;
+			// A Move whose destination is not the keeper cell is a fresh order from the player, not
+			// the engine's Guard/Area Guard (both of which keep their own mission id). Hand the
+			// unit back so the order stands instead of being dragged home by the keeper.
+			if (pTechno->CurrentMission == Mission::Move && pFoot->Destination && pKeepCell &&
+				pFoot->Destination != pKeepCell)
+			{
+				released_[index] = true;
+				Logf("keep: released %s %p after a new move order", pType ? pType->ID : "?", pTechno);
+				continue;
+			}
 			// Keep the unit on a plain Move whose destination is its own cell. Guard remembers a
 			// guard cell and Area Guard patrols the area it was given, and for a unit that has
 			// just been ordered somewhere that area is where it came from. Move onto the unit's
@@ -1238,17 +1266,35 @@ rightWasDown_ = rightDown;
 middleWasDown_ = middleDown;
 }
 bool FormationController::ShouldSuppressClick(){
-// Suppress only while a formation gesture is (or may be) under way: the right button
-// must be held AND the left button must have been down at some point during that hold.
-// Suppressing every right-button hold broke the plain right click that clears a selection.
-const bool rightDown = RightButtonDown();
-const bool suppress = state_ == State::Dragging || suppressFrames_ > 0 || (rightDown && gestureLatch_) || MiddleButtonDown();
-if (suppress != wasSuppressing_)
-{
-wasSuppressing_ = suppress;
-Logf("suppress: engine click handling %s", suppress ? "disabled" : "restored");
-}
-return suppress;
+	// Suppress only while a formation gesture is (or may be) under way: the right button
+	// must be held AND the left button must have been down at some point during that hold.
+	// Suppressing every right-button hold broke the plain right click that clears a selection.
+	const bool rightDown = RightButtonDown();
+	const bool suppress = state_ == State::Dragging || suppressFrames_ > 0 || (rightDown && gestureLatch_) || MiddleButtonDown();
+	if (suppress != wasSuppressing_)
+	{
+		wasSuppressing_ = suppress;
+		Logf("suppress: engine click handling %s", suppress ? "disabled" : "restored");
+	}
+	if (!suppress)
+	{
+		// The engine is about to handle this click, and any left click with units selected is a
+		// player order. Ask the keeper to let go before it re-pins, otherwise the order is
+		// overwritten in the same frame and the unit can never be commanded again.
+		const bool leftFresh = ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0) && !leftWasDown_;
+		if (releaseGuard_ == 0 && leftFresh && (permanentCount_ > 0 || trackFrames_ > 0))
+		{
+			for (int index = 0; index < unitCount_ && index < slotCount_; ++index)
+			{
+				if (units_[index] && IsAlive(units_[index]) && units_[index]->IsSelected)
+				{
+					releaseRequested_ = true;
+					break;
+				}
+			}
+		}
+	}
+	return suppress;
 }
 void FormationController::DrawPreview(){
 if (disabled_)
