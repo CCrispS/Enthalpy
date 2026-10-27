@@ -258,9 +258,13 @@ private:
 	bool gestureLatch_ = false;
 	bool leftReleasedFirst_ = false;
 	int reassertFrames_ = 0;
+	int trackFrames_ = 0;
 	// How often a unit that stopped short of its cell may be nudged again; stops the
 	// supervisor from re-issuing a move every few frames for the same unit.
 	int reassertTries_[256] = {};
+	bool wasHome_[256] = {};
+	int keepTries_[256] = {};
+	static constexpr int kMaxKeepTries = 3;
 	static constexpr int kMaxReasserts = 2;
 
 	PendingFacing pending_[256] = {};

@@ -800,7 +800,11 @@ lastCellY = firstCellY;
 
 void FormationController::CommitOrders(){
 	for (int i = 0; i < kMaxUnits; ++i)
+	{
 		reassertTries_[i] = 0;
+		wasHome_[i] = false;
+		keepTries_[i] = 0;
+	}
 int issued = 0;
 pendingCount_ = 0;
 for (int index = 0; index < unitCount_ && index < slotCount_; ++index)
@@ -832,6 +836,7 @@ pending_[pendingCount_].Applied = false;
 }
 }
 reassertFrames_ = 300;
+trackFrames_ = 1500;
 suppressFrames_ = 8;
 Logf("formation: commit %d/%d orders (columns=%d ranks=%d spacingCells=%d anchor=(%d,%d) facing=%d)",
 issued, unitCount_, columns_, ranks_, spacingCells_, anchor_.X, anchor_.Y,
@@ -1074,6 +1079,49 @@ lastLogged = live;
 Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 }
 }
+	if (trackFrames_ > 0)
+	{
+		--trackFrames_;
+		if ((trackFrames_ % 60) == 0)
+		{
+			for (int index = 0; index < unitCount_ && index < slotCount_; ++index)
+			{
+				TechnoClass* pTechno = units_[index];
+				if (!pTechno || !IsAlive(pTechno))
+					continue;
+				TechnoTypeClass* pType = pTechno->GetTechnoType();
+				auto pFoot = static_cast<FootClass*>(pTechno);
+				const CoordStruct target = CellCentre(slots_[index].CellX, slots_[index].CellY, 0, 0);
+				const long long dx = static_cast<long long>(pTechno->Location.X) - target.X;
+				const long long dy = static_cast<long long>(pTechno->Location.Y) - target.Y;
+				const long long dist = static_cast<long long>(sqrt(static_cast<double>(static_cast<double>(dx) * dx + static_cast<double>(dy) * dy)));
+				if (dist <= kArrivalRadius && index < kMaxUnits)
+					wasHome_[index] = true;
+				if (wasHome_[index] && dist > 600)
+				{
+					Logf("ALERT: %s %p left its cell, dist=%lld mission=%d dest=%p cell=(%d,%d) keep=%d",
+						pType ? pType->ID : "?", pTechno, dist,
+						static_cast<int>(pTechno->CurrentMission), pFoot->Destination,
+						slots_[index].CellX, slots_[index].CellY, index < kMaxUnits ? keepTries_[index] : -1);
+					if (index < kMaxUnits && keepTries_[index] < kMaxKeepTries && trackFrames_ > 900)
+					{
+						CellClass* pKeepCell = MapClass::Instance->TryGetCellAt(CellStruct{
+							static_cast<short>(slots_[index].CellX), static_cast<short>(slots_[index].CellY) });
+						if (pKeepCell)
+						{
+							++keepTries_[index];
+							pTechno->SetDestination(pKeepCell, true);
+							pTechno->ForceMission(Mission::Move);
+						}
+					}
+				}
+				Logf("track: %s %p dist=%lld mission=%d dest=%p cell=(%d,%d)",
+					pType ? pType->ID : "?", pTechno, dist,
+					static_cast<int>(pTechno->CurrentMission), pFoot->Destination,
+					slots_[index].CellX, slots_[index].CellY);
+			}
+		}
+	}
 switch (state_)
 {
 case State::Idle:
