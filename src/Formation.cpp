@@ -962,7 +962,9 @@ void FormationController::ServicePendingFacings(){
 		{
 			item.Applied = true;
 			item.FramesLeft = 0;
-			Logf("formation: facing applied to %p (cell %d,%d) facing=%u",
+			// Position and facing are both final now: hand the unit a Stop so nothing can walk it away.
+			item.Unit->ForceMission(Mission::Stop);
+			Logf("formation: facing applied to %p (cell %d,%d) facing=%u, stopped",
 				item.Unit, item.CellX, item.CellY, static_cast<unsigned>(item.Facing.value<16>()));
 		}
 
@@ -1144,29 +1146,21 @@ Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 				Logf("keep: released %s %p after a new move order", pType ? pType->ID : "?", pTechno);
 				continue;
 			}
-			// Keep the unit on a plain Move whose destination is its own cell. Guard remembers a
-			// guard cell and Area Guard patrols the area it was given, and for a unit that has
-			// just been ordered somewhere that area is where it came from. Move onto the unit's
-			// own cell is the only order that means stand exactly here. Types carrying
-			// DefaultToGuardArea get Area Guard handed back to them over and over by the engine,
-			// so those units keep the pin for the whole match instead of a short window.
-			if (index < kMaxUnits && wasHome_[index] && pKeepCell &&
-				(pTechno->CurrentMission != Mission::Move || pFoot->Destination != pKeepCell))
+			// Once a unit stands on its cell and has taken its final facing, hand it a Stop. Stop is
+			// the one mission that carries no destination: Guard keeps a guard cell and Area Guard
+			// patrols the area it was handed (for a unit that just marched somewhere, that area is
+			// where it came from), and Move keeps a destination that the keeper would have to
+			// rewrite every frame. Re-issued only when the engine has replaced Stop with something
+			// else, so the unit simply stays where it was put while it is inside its cell.
+			if (index < kMaxUnits && wasHome_[index] && inCell && pTechno->CurrentMission != Mission::Stop)
 			{
-				if (pTechno->CurrentMission != Mission::Move)
+				pTechno->ForceMission(Mission::Stop);
+				if (index < kMaxUnits && !stopLogged_[index])
 				{
-					const DWORD nowTick = GetTickCount();
-					if (nowTick - lastPinLog_ >= 1000)
-					{
-						lastPinLog_ = nowTick;
-						Logf("pin: %s %p was mission=%d guardArea=%d in cell (%d,%d) dist=%lld",
-							pType ? pType->ID : "?", pTechno, static_cast<int>(pTechno->CurrentMission),
-							pType ? static_cast<int>(pType->DefaultToGuardArea) : -1,
-							slots_[index].CellX, slots_[index].CellY, dist);
-					}
+					stopLogged_[index] = true;
+					Logf("stop: %s %p stopped on cell (%d,%d)", pType ? pType->ID : "?", pTechno,
+						slots_[index].CellX, slots_[index].CellY);
 				}
-				pTechno->SetDestination(pKeepCell, true);
-				pTechno->ForceMission(Mission::Move);
 			}
 			if (index < kMaxUnits && wasHome_[index] && dist > 600 && (trackFrames_ % 30) == 0)
 				Logf("ALERT: %s %p off its cell, dist=%lld mission=%d dest=%p cell=(%d,%d)",

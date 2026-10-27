@@ -265,6 +265,7 @@ private:
 	bool wasHome_[256] = {};
 	bool permanent_[256] = {};
 	bool released_[256] = {};
+	bool stopLogged_[256] = {};
 	bool releaseRequested_ = false;
 	int releaseGuard_ = 0;
 	int permanentCount_ = 0;

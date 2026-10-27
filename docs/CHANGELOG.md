@@ -1,5 +1,14 @@
 # 更新日志
 
+## 2026-10-27 · 到位并转向后立刻下发 Stop
+
+- 需求：单位到达目的地、完成转向、位置与朝向都正确之后，立即下达 Stop。
+- 改动：
+  - `ServicePendingFacings()` 在确认 `Facing.current() == 目标` 并写下最终朝向后，立刻 `ForceMission(Mission::Stop)`，日志 `formation: facing applied to … , stopped`。
+  - 守护循环里的“钉 Move”整段替换为“钉 Stop”：只要单位已经在自己的格子里、且任务不是 Stop，就改回 Stop（每个单位只记一次 `stop: … stopped on cell (x,y)`）。
+- 为什么是 Stop：`Guard` 带守卫点、`Area_Guard` 带巡逻区、`Move` 带 destination——这三者都会在引擎重新指派时把单位带回“它该在的地方”，而那个地方是出发点。`Stop` 不携带任何目标，是唯一“原地不动”的任务。
+- 实测：11 个单位全部 `facing applied … stopped`，16 秒后同一区域像素差为 0（连待机动画都停了），说明确实站定。
+- 保留：玩家用左键指挥时会整体释放守护（上一版机制），下了新命令后正常行动。
 ## 2026-10-27 · 被钉住的单位无法再用左键指挥
 
 - 现象：`DefaultToGuardArea` 类型（精神突击车等）被整局钉住后，选中它们再左键下令无效——单位被锁在原地。
