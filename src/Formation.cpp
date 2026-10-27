@@ -197,6 +197,10 @@ return left && right;
 bool FormationController::RightButtonDown(){
 	return (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
 }
+
+bool FormationController::MiddleButtonDown(){
+	return (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
+}
 HWND FormationController::GameWindow(){
 static HWND hwnd = nullptr;
 if (hwnd && IsWindow(hwnd))
@@ -934,6 +938,8 @@ pUnitType->GetImage() ? 1 : 0, pUnitType->MainVoxel.VXL ? 1 : 0);
 }
 const bool leftDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 const bool rightDown = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+// Formation mode is a middle-button gesture: hold it, move the cursor to aim, release to order.
+const bool middleDown = (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
 const bool bothDown = leftDown && rightDown;
 if (bothDown)
 	gestureLatch_ = true;
@@ -943,6 +949,8 @@ const bool leftPressed = leftDown && !leftWasDown_;
 const bool rightPressed = rightDown && !rightWasDown_;
 const bool leftReleased = !leftDown && leftWasDown_;
 const bool rightReleased = !rightDown && rightWasDown_;
+const bool middlePressed = middleDown && !middleWasDown_;
+const bool middleReleased = !middleDown && middleWasDown_;
 if (reassertFrames_ > 0 && (state_ == State::Cooldown || state_ == State::Idle))
 {
 --reassertFrames_;
@@ -1001,7 +1009,7 @@ switch (state_)
 {
 case State::Idle:
 {
-if (!bothDown || cooldownFrames_ > 0)
+if (!middleDown || cooldownFrames_ > 0)
 break;
 Settings::Load();
 GatherSelectedUnits();
@@ -1061,13 +1069,8 @@ break;
 }
 case State::Dragging:
 {
-if (rightDown)
+if (middleDown)
 {
-if (leftReleased && !leftReleasedFirst_)
-{
-leftReleasedFirst_ = true;
-Logf("formation: left released first, waiting for the right button");
-}
 ComputeLayout();
 break;
 }
@@ -1078,20 +1081,21 @@ break;
 }
 case State::Cooldown:
 {
-if (!bothDown && !leftPressed && !rightPressed)
+if (!middleDown && !leftPressed && !rightPressed && !middlePressed)
 state_ = State::Idle;
 break;
 }
 }
 leftWasDown_ = leftDown;
 rightWasDown_ = rightDown;
+middleWasDown_ = middleDown;
 }
 bool FormationController::ShouldSuppressClick(){
 // Suppress only while a formation gesture is (or may be) under way: the right button
 // must be held AND the left button must have been down at some point during that hold.
 // Suppressing every right-button hold broke the plain right click that clears a selection.
 const bool rightDown = RightButtonDown();
-const bool suppress = state_ == State::Dragging || suppressFrames_ > 0 || (rightDown && gestureLatch_);
+const bool suppress = state_ == State::Dragging || suppressFrames_ > 0 || (rightDown && gestureLatch_) || MiddleButtonDown();
 if (suppress != wasSuppressing_)
 {
 wasSuppressing_ = suppress;

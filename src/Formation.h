@@ -33,6 +33,7 @@ public:
 	void Disable(const char* reason);
 
 	static bool BothMouseButtonsDown();	static bool RightButtonDown();
+	static bool MiddleButtonDown();
 	static bool CursorWorldPos(CoordStruct& out);
 	static bool CursorClientPos(Point2D& out);
 	static void ClientToWorld(const Point2D& client, CoordStruct& world);
@@ -248,6 +249,7 @@ private:
 
 	bool leftWasDown_ = false;
 	bool rightWasDown_ = false;
+	bool middleWasDown_ = false;
 	// True from the moment both buttons were seen held until the right button comes up.
 	bool gestureLatch_ = false;
 	bool leftReleasedFirst_ = false;
