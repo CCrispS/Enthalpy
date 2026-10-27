@@ -91,6 +91,10 @@ private:
 		DirStruct Facing;
 		int FramesLeft;
 		bool Applied;
+	// True once the unit was actually seen driving towards the slot.
+	bool SeenMoving;
+	// Consecutive frames the locomotor reported no movement; filters its one-tick gaps.
+	int StillFrames;
 		int TurnAttempts;
 	};
 

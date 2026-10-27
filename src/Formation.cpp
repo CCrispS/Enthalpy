@@ -805,6 +805,8 @@ pending_[pendingCount_].CellY = slots_[index].CellY;
 pending_[pendingCount_].Facing = facingDir_;
 pending_[pendingCount_].FramesLeft = kArrivalFrames;
 pending_[pendingCount_].Applied = false;
+	pending_[pendingCount_].SeenMoving = false;
+	pending_[pendingCount_].StillFrames = 0;
 ++pendingCount_;
 }
 }
@@ -829,20 +831,46 @@ continue;
 // Aircraft and jumpjets never clear their destination: they keep hovering over the cell, so
 // the "has stopped moving" test below would never fire and they would never turn.
 const bool airUnit = AirHeightFor(item.Unit) > 0;
-const bool stopped = static_cast<FootClass*>(item.Unit)->Destination == nullptr;
-if (!stopped && !airUnit)
-{
-if (item.Applied)
-continue;
---item.FramesLeft;
-if (item.FramesLeft > 0)
-pending_[alive++] = item;
-continue;
-}
 const CoordStruct target = CellCentre(item.CellX, item.CellY, 0, 0);
 const long long dx = static_cast<long long>(item.Unit->Location.X) - target.X;
 const long long dy = static_cast<long long>(item.Unit->Location.Y) - target.Y;
-if (dx * dx + dy * dy > static_cast<long long>(kArrivalRadius) * kArrivalRadius)
+const bool reached = (dx * dx + dy * dy) <= static_cast<long long>(kArrivalRadius) * kArrivalRadius;
+// A finished Move mission usually leaves Destination pointing at the target cell, so
+// Destination being null is not a reliable "stopped" test. Ask the locomotor instead:
+// it reports whether the unit is still travelling on this very tick.
+bool moving = false;
+if (ILocomotion* pLoco = static_cast<FootClass*>(item.Unit)->Locomotor.operator->())
+	moving = pLoco->Is_Moving_Now();
+const bool stopped = static_cast<FootClass*>(item.Unit)->Destination == nullptr || (reached && !moving);
+if (!stopped && !airUnit)
+{
+	if (item.Applied)
+		continue;
+	if (moving)
+	{
+		// Driving towards the slot: wait for arrival without spending the budget, so a long
+		// march cannot expire the record before the unit gets there.
+		item.SeenMoving = true;
+		item.StillFrames = 0;
+		pending_[alive++] = item;
+		continue;
+	}
+	// Standing still and not on the cell. The locomotor reports one-tick gaps while starting
+	// and while re-pathing, so require a run of still frames before giving up.
+	++item.StillFrames;
+	if (item.SeenMoving && item.StillFrames > 45)
+	{
+		Logf("formation: facing dropped for %p (cell %d,%d) dist=%lld",
+			item.Unit, item.CellX, item.CellY, static_cast<long long>(dx * dx + dy * dy));
+		item.FramesLeft = 0;
+		continue;
+	}
+	--item.FramesLeft;
+	if (item.FramesLeft > 0)
+		pending_[alive++] = item;
+	continue;
+}
+if (!reached)
 {
 item.FramesLeft = 0;
 continue;
