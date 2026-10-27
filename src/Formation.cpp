@@ -1104,7 +1104,7 @@ Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 			// is where it came from. Re-issuing Move on the cell every time the engine has
 			// changed the mission means the unit simply stands there, whichever mission a team
 			// script hands it.
-			if (index < kMaxUnits && pKeepCell &&
+			if (index < kMaxUnits && wasHome_[index] && pKeepCell &&
 				(pTechno->CurrentMission != Mission::Move || pFoot->Destination != pKeepCell))
 			{
 				if ((trackFrames_ % 60) == 0 && pTechno->CurrentMission != Mission::Move)

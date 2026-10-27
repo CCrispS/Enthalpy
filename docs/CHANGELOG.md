@@ -1,5 +1,11 @@
 # 更新日志
 
+## 2026-10-27 · 到位单位改用 Move 守住，不再用 Guard
+
+- 观察：上一版把到达的单位钉成 `Mission::Guard`，日志里仍能看到 `CAOS ... mission=11`（Area_Guard）把单位带回出发地、`BRUTE ... mission=2` 带着别人的 `dest` 跑开；`pin:`/`ALERT:` 计数 42/48，个别单位 `keep` 用完 8 次仍在 600+ leptons 外。
+- 原因：`Guard` 与 `Area_Guard` 都携带“该待在哪”的位置语义，而引擎/小队给刚调动过的单位派的守卫点就是它出发的位置。钉成 Guard 只是换了任务名，没有清掉那个位置语义。
+- 修复：到位后的单位一律保持在 `Mission::Move`，目标设成它自己的格子；只要引擎把任务改成别的（Guard 2/5、Area_Guard 11）或把 destination 换掉，下一帧就改回 `Move` + 本格。这样无论小队脚本派什么，单位都停在格上。
+- 说明：`Move` 的语义是“走到这个坐标”，坐标就是它脚下，所以不会产生额外位移；移动途中不干预，只在 `wasHome_`（已到过格子）之后生效。
 ## 2026-10-27 · Area Guard 把单位带回出发地（真因）
 
 - 日志证据：`ALERT: CAOS ... mission=11 dest=0x1850C040` 反复出现，`mission=11` 就是 `Mission::Area_Guard`；狂兽人则是 `mission=2`（Move）且 `dest` 指向别的格子。
