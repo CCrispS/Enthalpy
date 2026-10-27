@@ -34,6 +34,9 @@ constexpr int kMaxFilledSlots = 48;
 constexpr int kMaxVoxelGhosts = 6;
         
 constexpr int kCooldownFrames = 45;
+// Byte written into the Z buffer area a silhouette is captured over: nothing in the world
+// may occlude the borrowed draw, or the ghost inherits the hole.
+constexpr unsigned char kZBufferFarByte = 0xFF;
 constexpr int kCapturesPerFrame = 3;
 constexpr DWORD kColorGroundShadow = 0x0000;
 constexpr DWORD kColorGhostShadow = 0x0320;
@@ -1413,7 +1416,48 @@ target.Z = cellPos.Z;
 			pSurface->SetPixel(&pixel, kCaptureSentinel);
 		}
 	}
-const CoordStruct oldLocation = pUnit->GetCoords();
+// Units are drawn with a depth test against the world's Z buffer, so whatever the capture
+// spot happens to sit behind - a tree, a building, a ridge - tears the borrowed silhouette
+// apart. Push that part of the Z buffer far away for the duration of the passes and restore
+// it afterwards, so a ghost never inherits an occluder.
+ZBufferClass* pZb = ZBufferClass::ZBuffer;
+unsigned char* zbSaved = nullptr;
+int zbSavedBytes = 0;
+int zbElem = 1;
+int zbRegionWidth = 1;
+int zbRegionLeft = 0;
+int zbRegionTop = 0;
+if (pZb && pZb->BufferStart && pZb->W > 0 && pZb->H > 0)
+{
+const int elems = pZb->W * pZb->H;
+zbElem = (pZb->BufferSize > 0 && elems > 0) ? (pZb->BufferSize / elems) : 1;
+if (zbElem < 1)
+zbElem = 1;
+int left = capLeft - pZb->rect.X;
+int top = capTop - pZb->rect.Y;
+int right = capRight - pZb->rect.X;
+int bottom = capBottom - pZb->rect.Y;
+if (left < 0) left = 0;
+if (top < 0) top = 0;
+if (right > pZb->W - 1) right = pZb->W - 1;
+if (bottom > pZb->H - 1) bottom = pZb->H - 1;
+if (right >= left && bottom >= top)
+{
+zbRegionWidth = right - left + 1;
+zbRegionLeft = left;
+zbRegionTop = top;
+const int rows = bottom - top + 1;
+const int rowBytes = zbRegionWidth * zbElem;
+zbSavedBytes = rowBytes * rows;
+zbSaved = new unsigned char[zbSavedBytes];
+for (int row = 0; row < rows; ++row)
+{
+unsigned char* src = pZb->BufferStart + ((top + row) * pZb->W + left) * zbElem;
+memcpy(zbSaved + row * rowBytes, src, rowBytes);
+memset(src, kZBufferFarByte, rowBytes);
+}
+}
+}const CoordStruct oldLocation = pUnit->GetCoords();
 const DirStruct oldFacing = pUnit->Facing.target();
 const DirStruct oldTurretFacing = pUnit->TurretFacing.target();
 const bool oldNoShadow = pType->NoShadow;
@@ -1523,7 +1567,18 @@ pLoco->Do_Turn(oldFacing);
 			pSurface->SetPixel(&pixel, before[(y - capTop) * kBeforeStride + (x - capLeft)]);
 		}
 	}
-	// Seal enclosed holes so an occluder can never leave a bitten-out silhouette behind.
+if (zbSaved)
+{
+const int rows = zbSavedBytes / (zbRegionWidth * zbElem);
+const int rowBytes = zbRegionWidth * zbElem;
+for (int row = 0; row < rows; ++row)
+{
+unsigned char* dst = pZb->BufferStart + ((zbRegionTop + row) * pZb->W + zbRegionLeft) * zbElem;
+memcpy(dst, zbSaved + row * rowBytes, rowBytes);
+}
+delete[] zbSaved;
+zbSaved = nullptr;
+}	// Seal enclosed holes so an occluder can never leave a bitten-out silhouette behind.
 	FillEnclosedHoles(patch.BodyMask);
 	FillEnclosedHoles(patch.Mask);
 	(void)behindOk;
