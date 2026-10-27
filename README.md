@@ -61,7 +61,7 @@ cd Enthalpy
 ## 配置
 
 配置查找顺序（取**第一个确实含 `[Enthalpy]` 段**的文件）：`Enthalpy.ini` → `RA2MD.INI` → `RA2MO.ini` → `RA2.INI`。
-推荐只用 `Enthalpy.ini`，与 DLL 放在一起。
+推荐只用 `Enthalpy.ini`，与 DLL 放在一起。完整键表、生效时机与常用预设见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
@@ -75,6 +75,8 @@ cd Enthalpy
 | `GhostColorInvalidEdge` | `255,170,0` | 非法/吸附格位的描边色 |
 | `TargetLine` | `no` | 是否绘制“按下点 → 光标”的绿色目标线 |
 | `Enthalpydebug` | `no` | 是否写日志文件 |
+
+每个键的含义、取值范围与预设组合见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)；用户可见的改动记录见 [docs/CHANGELOG.md](docs/CHANGELOG.md)。
 
 ## 仓库结构
 
@@ -90,7 +92,9 @@ Enthalpy/
 │  ├─ Log.cpp/.h         日志（含只读目录回退）
 │  └─ dllmain.cpp        模块入口
 ├─ YRpp/                 随仓库附带的 YRpp 头文件（见 NOTICE.md）
+├─ docs/CONFIGURATION.md 配置参考（键表、预设、排障）
 ├─ docs/COMPATIBILITY.md 兼容性与排障
+├─ docs/CHANGELOG.md     更新记录
 └─ Enthalpy.ini          配置模板
 ```
 
