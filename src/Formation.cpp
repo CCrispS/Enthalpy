@@ -29,6 +29,8 @@ namespace
 	double gCaptureMs = 0.0;
 	double gDrawMs = 0.0;
 	int gDrawCalls = 0;
+	int gUpdateCalls = 0;
+	int gDrawPasses = 0;
 
 	struct ScopedMs
 	{
@@ -1014,6 +1016,7 @@ void FormationController::Update(){
 if (disabled_)
 return;
 ++frameId_;
+	++gUpdateCalls;
 
 // If the frame hook keeps firing but the draw hook never does, another plugin owns the
 // draw address (Syringe allows one hook per address) and ghosts cannot be painted.  Saying
@@ -1336,7 +1339,7 @@ return;
 ++drawFrames_;
 	if ((drawFrames_ % 60) == 0)
 	{
-		Logf("perf: capture=%.3fms draw=%.3fms draws=%d slots=%d", gCaptureMs, gDrawMs, gDrawCalls, slotCount_); gDrawCalls = 0;
+		Logf("perf: capture=%.3fms draw=%.3fms updates=%d passes=%d slots=%d", gCaptureMs, gDrawMs, gUpdateCalls, gDrawPasses, slotCount_); gUpdateCalls = 0; gDrawPasses = 0;
 		gCaptureMs = 0.0;
 		gDrawMs = 0.0;
 	}

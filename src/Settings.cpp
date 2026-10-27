@@ -9,6 +9,7 @@ namespace
 {
 	Settings::Values g_Current;
 	char g_IniPath[MAX_PATH] = { 0 };
+	char g_LegacyPath[MAX_PATH] = { 0 };
 	char g_PluginDir[MAX_PATH] = { 0 };
 	bool g_Resolved = false;
 
@@ -94,16 +95,29 @@ namespace
 			if (HasEnthalpySection(candidate))
 			{
 				strncpy_s(g_IniPath, sizeof(g_IniPath), candidate, _TRUNCATE);
+				snprintf(g_LegacyPath, sizeof(g_LegacyPath), "%sRA2MD.INI", g_PluginDir);
 				return;
 			}
 		}
 	}
 
+	// A key may live in Enthalpy.ini or in the mod's own ini. Users keep editing RA2MD.INI long
+	// after the plugin moved to its own file, and a silently ignored key looks like a broken
+	// feature, so every read falls back to the legacy file when the key is absent.
+	DWORD ReadKey(const char* key, char* value, DWORD size)
+	{
+		DWORD length = GetPrivateProfileStringA("Enthalpy", key, "", value, size, g_IniPath);
+		if (length != 0)
+			return length;
+		if (g_LegacyPath[0] == '\0')
+			return 0;
+		return GetPrivateProfileStringA("Enthalpy", key, "", value, size, g_LegacyPath);
+	}
+
 	bool ReadBool(const char* path, const char* key, bool fallback)
 	{
 		char value[32] = { 0 };
-		const DWORD length = GetPrivateProfileStringA("Enthalpy", key, "", value,
-			sizeof(value), path);
+		const DWORD length = ReadKey(key, value, sizeof(value));
 
 		if (length == 0)
 			return fallback;
@@ -115,8 +129,7 @@ namespace
 	int ReadInt(const char* path, const char* key, int fallback)
 	{
 		char value[32] = { 0 };
-		const DWORD length = GetPrivateProfileStringA("Enthalpy", key, "", value,
-			sizeof(value), path);
+		const DWORD length = ReadKey(key, value, sizeof(value));
 
 		if (length == 0)
 			return fallback;
@@ -139,8 +152,7 @@ namespace
 	DWORD ReadColor(const char* path, const char* key, DWORD fallback)
 	{
 		char value[64] = { 0 };
-		const DWORD length = GetPrivateProfileStringA("Enthalpy", key, "", value,
-			sizeof(value), path);
+		const DWORD length = ReadKey(key, value, sizeof(value));
 
 		if (length == 0)
 			return fallback;
@@ -201,6 +213,8 @@ values.ColorInvalidEdge = ReadColor(g_IniPath, "GhostColorInvalidEdge", values.C
 			values.GhostOpacity = 4;
 		else
 			values.GhostOpacity = opacity;
+
+		Logf("settings: GhostOpacity=%d ini=%s legacy=%s", values.GhostOpacity, g_IniPath, g_LegacyPath);
 
 		g_Current = values;
 		return values;
