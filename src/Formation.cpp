@@ -55,6 +55,8 @@ constexpr int kSnapSearchRadius = 5;
 constexpr int kArrivalRadius = 260;
 constexpr int kArrivalFrames = 900;
 constexpr int kFacingTurnFrames = 600;
+constexpr int kFacingNearRadius = 520; // two cells: a unit parked a cell off still turns
+constexpr int kFacingStillFrames = 45;  // settle ticks before claiming the pose
 // Aircraft keep re-deriving their facing from the flight model, so a pinned facing has to be
 // re-applied for a while instead of being set once.
 constexpr int kAirFacingFrames = 90;
@@ -817,113 +819,117 @@ issued, unitCount_, columns_, ranks_, spacingCells_, anchor_.X, anchor_.Y,
 static_cast<int>(facingDir_.value()));
 }
 void FormationController::ServicePendingFacings(){
-int alive = 0;
-for (int index = 0; index < pendingCount_; ++index)
-{
-PendingFacing& item = pending_[index];
-if (item.FramesLeft <= 0 || !item.Unit)
-continue;
-if (!IsAlive(item.Unit))
-{
-item.FramesLeft = 0;
-continue;
-}
-// Aircraft and jumpjets never clear their destination: they keep hovering over the cell, so
-// the "has stopped moving" test below would never fire and they would never turn.
-const bool airUnit = AirHeightFor(item.Unit) > 0;
-const CoordStruct target = CellCentre(item.CellX, item.CellY, 0, 0);
-const long long dx = static_cast<long long>(item.Unit->Location.X) - target.X;
-const long long dy = static_cast<long long>(item.Unit->Location.Y) - target.Y;
-const bool reached = (dx * dx + dy * dy) <= static_cast<long long>(kArrivalRadius) * kArrivalRadius;
-// A finished Move mission usually leaves Destination pointing at the target cell, so
-// Destination being null is not a reliable "stopped" test. Ask the locomotor instead:
-// it reports whether the unit is still travelling on this very tick.
-bool moving = false;
-if (ILocomotion* pLoco = static_cast<FootClass*>(item.Unit)->Locomotor.operator->())
-	moving = pLoco->Is_Moving_Now();
-const bool stopped = static_cast<FootClass*>(item.Unit)->Destination == nullptr || (reached && !moving);
-if (!stopped && !airUnit)
-{
-	if (item.Applied)
-		continue;
-	if (moving)
+	int alive = 0;
+	for (int index = 0; index < pendingCount_; ++index)
 	{
-		// Driving towards the slot: wait for arrival without spending the budget, so a long
-		// march cannot expire the record before the unit gets there.
-		item.SeenMoving = true;
-		item.StillFrames = 0;
-		pending_[alive++] = item;
-		continue;
+		PendingFacing& item = pending_[index];
+		if (item.FramesLeft <= 0 || !item.Unit)
+			continue;
+		if (!IsAlive(item.Unit))
+		{
+			item.FramesLeft = 0;
+			continue;
+		}
+		if (item.Applied)
+			continue;
+
+		// Aircraft and jumpjets keep hovering over their cell: the destination never clears
+		// and the flight model rewrites the facing every tick, so they are pinned instead.
+		const bool airUnit = AirHeightFor(item.Unit) > 0;
+		const CoordStruct target = CellCentre(item.CellX, item.CellY, 0, 0);
+		const long long dx = static_cast<long long>(item.Unit->Location.X) - target.X;
+		const long long dy = static_cast<long long>(item.Unit->Location.Y) - target.Y;
+		const long long dist2 = dx * dx + dy * dy;
+		// A unit often parks slightly off its cell centre (claimed cell, pathing granularity,
+		// infantry sub-slots), so the slot test is two cells wide or those units would
+		// silently never turn at all.
+		const bool nearSlot = dist2 <= static_cast<long long>(kFacingNearRadius) * kFacingNearRadius;
+
+		bool moving = false;
+		if (ILocomotion* pLoco = static_cast<FootClass*>(item.Unit)->Locomotor.operator->())
+			moving = pLoco->Is_Moving_Now();
+
+		if (!airUnit)
+		{
+			if (moving)
+			{
+				// On the way: wait without spending the budget, so a long march cannot
+				// expire the record before the unit gets there.
+				item.SeenMoving = true;
+				item.StillFrames = 0;
+				pending_[alive++] = item;
+				continue;
+			}
+			++item.StillFrames;
+			if (!item.SeenMoving)
+			{
+				// Right after the order the locomotor has not started yet: grace period.
+				--item.FramesLeft;
+				if (item.FramesLeft > 0)
+					pending_[alive++] = item;
+				continue;
+			}
+			if (!nearSlot)
+			{
+				if (item.StillFrames > kFacingStillFrames)
+				{
+					Logf("formation: facing dropped for %p (cell %d,%d) dist2=%lld",
+						item.Unit, item.CellX, item.CellY, dist2);
+					item.FramesLeft = 0;
+				}
+				else
+					pending_[alive++] = item;
+				continue;
+			}
+			if (item.StillFrames <= kFacingStillFrames)
+			{
+				// It only just stopped: let it settle before claiming the pose.
+				pending_[alive++] = item;
+				continue;
+			}
+		}
+
+		if (airUnit)
+		{
+			item.Unit->Facing.set(item.Facing);
+			item.Unit->TurretFacing.set(item.Facing);
+			++item.TurnAttempts;
+			if (item.TurnAttempts >= kAirFacingFrames)
+			{
+				item.Applied = true;
+				item.FramesLeft = 0;
+				Logf("formation: air facing pinned on %p (cell %d,%d)", item.Unit, item.CellX, item.CellY);
+			}
+		}
+		else if (item.Unit->Facing.current() != item.Facing)
+		{
+			// turn() only sets the target, so the hull rotates at its own ROT and every unit
+			// type keeps its own turning speed. Asking again each frame keeps the engine's
+			// final-path turn from winning; stopping the moment it matches is what keeps the
+			// old endless circling away.
+			item.Unit->Facing.turn(item.Facing);
+			++item.TurnAttempts;
+			if (item.TurnAttempts >= kFacingTurnFrames)
+			{
+				item.Applied = true;
+				item.FramesLeft = 0;
+				Logf("formation: facing gave up on %p (cell %d,%d) after %d frames",
+					item.Unit, item.CellX, item.CellY, item.TurnAttempts);
+			}
+		}
+		else
+		{
+			item.Applied = true;
+			item.FramesLeft = 0;
+			Logf("formation: facing applied to %p (cell %d,%d) facing=%u",
+				item.Unit, item.CellX, item.CellY, static_cast<unsigned>(item.Facing.value<16>()));
+		}
+
+		--item.FramesLeft;
+		if (item.FramesLeft > 0)
+			pending_[alive++] = item;
 	}
-	// Standing still and not on the cell. The locomotor reports one-tick gaps while starting
-	// and while re-pathing, so require a run of still frames before giving up.
-	++item.StillFrames;
-	if (item.SeenMoving && item.StillFrames > 45)
-	{
-		Logf("formation: facing dropped for %p (cell %d,%d) dist=%lld",
-			item.Unit, item.CellX, item.CellY, static_cast<long long>(dx * dx + dy * dy));
-		item.FramesLeft = 0;
-		continue;
-	}
-	--item.FramesLeft;
-	if (item.FramesLeft > 0)
-		pending_[alive++] = item;
-	continue;
-}
-if (!reached)
-{
-item.FramesLeft = 0;
-continue;
-}
-if (!item.Applied)
-{
-if (airUnit)
-{
-// The flight model rewrites the facing every tick, so it has to be pinned for a while
-// instead of turned once.
-item.Unit->Facing.set(item.Facing);
-item.Unit->TurretFacing.set(item.Facing);
-++item.TurnAttempts;
-if (item.TurnAttempts >= kAirFacingFrames)
-{
-item.Applied = true;
-item.FramesLeft = 0;
-Logf("formation: air facing pinned on %p (cell %d,%d)", item.Unit, item.CellX, item.CellY);
-}
---item.FramesLeft;
-if (item.FramesLeft > 0)
-pending_[alive++] = item;
-continue;
-}
-// Ask for the turn every frame while the hull has not arrived yet: turn() only sets the
-// target, so the hull keeps rotating at its own ROT (smooth, per unit type). Re-asking
-// each frame keeps the engine's final-path turn from winning, and stopping as soon as
-// the facing matches is what prevents the old endless circling.
-if (item.Unit->Facing.current() != item.Facing)
-{
-item.Unit->Facing.turn(item.Facing);
-++item.TurnAttempts;
-if (item.TurnAttempts >= kFacingTurnFrames)
-{
-item.Applied = true;
-item.FramesLeft = 0;
-Logf("formation: facing gave up on %p (cell %d,%d) after %d frames",
-item.Unit, item.CellX, item.CellY, item.TurnAttempts);
-}
-}
-else
-{
-item.Applied = true;
-item.FramesLeft = 0;
-Logf("formation: facing applied to %p (cell %d,%d) facing=%u",
-item.Unit, item.CellX, item.CellY, static_cast<unsigned>(item.Facing.value<16>()));
-}
-}
---item.FramesLeft;
-if (item.FramesLeft > 0)
-pending_[alive++] = item;
-}
-pendingCount_ = alive;
+	pendingCount_ = alive;
 }
 void FormationController::Disable(const char* reason)
 {
