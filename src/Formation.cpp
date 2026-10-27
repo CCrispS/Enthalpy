@@ -11,6 +11,33 @@
 #include <cmath>
 #include <climits>
 #include <cstring>
+
+namespace
+{
+	// Lightweight frame profiler. The reported lag is view dependent, so we want numbers for the
+	// capture pass and for the silhouette blit instead of guesses.
+	double QpcMs()
+	{
+		static LARGE_INTEGER freq = { 0 };
+		if (freq.QuadPart == 0)
+			QueryPerformanceFrequency(&freq);
+		LARGE_INTEGER now;
+		QueryPerformanceCounter(&now);
+		return static_cast<double>(now.QuadPart) * 1000.0 / static_cast<double>(freq.QuadPart);
+	}
+
+	double gCaptureMs = 0.0;
+	double gDrawMs = 0.0;
+	int gDrawCalls = 0;
+
+	struct ScopedMs
+	{
+		double* pTarget;
+		double started;
+		explicit ScopedMs(double* target) : pTarget(target), started(QpcMs()) {}
+		~ScopedMs() { *pTarget += QpcMs() - started; }
+	};
+}
 namespace{
 constexpr DWORD kColorSlotFill = 0x03E0;
    
@@ -1009,6 +1036,10 @@ if (state_ == State::Dragging && DisplayClass::Global())
 		DisplayClass::Global()->DraggingRectangle = false;
 --suppressFrames_;
 ServicePendingFacings();
+	{
+		ScopedMs perfCapture(&gCaptureMs);
+		PrepareGhosts();
+	}
 PrepareGhosts();
 {
 static int typeDumpCountdown = 600;
@@ -1152,10 +1183,18 @@ Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 			// where it came from), and Move keeps a destination that the keeper would have to
 			// rewrite every frame. Re-issued only when the engine has replaced Stop with something
 			// else, so the unit simply stays where it was put while it is inside its cell.
-			if (index < kMaxUnits && wasHome_[index] && inCell && pTechno->CurrentMission != Mission::Stop)
+			// Once a unit stands on its cell and has taken its final facing, hand it a Stop. Stop is
+			// the one mission that carries no destination: Guard keeps a guard cell and Area Guard
+			// patrols the area it was handed (for a unit that just marched somewhere, that area is
+			// where it came from), and Move keeps a destination the keeper would have to rewrite.
+			// Throttled: a unit on a ramp slides and its mission flips every frame, so re-forcing
+			// Stop each frame re-initialises the locomotor over and over, which is what makes a
+			// slope stutter. Ten frames apart is plenty to keep it parked.
+			if (index < kMaxUnits && wasHome_[index] && inCell && pTechno->CurrentMission != Mission::Stop
+				&& (trackFrames_ % 10) == 0)
 			{
 				pTechno->ForceMission(Mission::Stop);
-				if (index < kMaxUnits && !stopLogged_[index])
+				if (!stopLogged_[index])
 				{
 					stopLogged_[index] = true;
 					Logf("stop: %s %p stopped on cell (%d,%d)", pType ? pType->ID : "?", pTechno,
@@ -1290,24 +1329,25 @@ bool FormationController::ShouldSuppressClick(){
 	}
 	return suppress;
 }
+
 void FormationController::DrawPreview(){
 if (disabled_)
 return;
 ++drawFrames_;
+	if ((drawFrames_ % 60) == 0)
+	{
+		Logf("perf: capture=%.3fms draw=%.3fms draws=%d slots=%d", gCaptureMs, gDrawMs, gDrawCalls, slotCount_); gDrawCalls = 0;
+		gCaptureMs = 0.0;
+		gDrawMs = 0.0;
+	}
 	if (state_ != State::Dragging || slotCount_ <= 0)
 		return;
 
+	// One pass per frame keeps the blend opacity honest.
 	static int lastDrawFrame = -1;
-	static int repeatDraws = 0;
 	if (lastDrawFrame == frameId_)
-	{
-		if (repeatDraws == 0)
-			Logf("ghost draw: repeat call inside frame %d was skipped", frameId_);
-		++repeatDraws;
 		return;
-	}
-	repeatDraws = 0;
-	lastDrawFrame = frameId_;
+	++gDrawCalls;
 
 	TacticalClass* pTactical = TacticalClass::Instance;
 	if (!pTactical)
@@ -1435,13 +1475,13 @@ if (pCached)
 const bool shadowOn = Settings::Current().GhostShadow;
 if (slot.AirHeight > 0)
 {
-BlitGhostPatch(pSurface, pCached->Patch, screen.X - pCached->Patch.FootX,
+++gDrawCalls; ScopedMs perfDraw(&gDrawMs); BlitGhostPatch(pSurface, pCached->Patch, screen.X - pCached->Patch.FootX,
 screen.Y - pCached->Patch.FootY, ghostTint, ghostEdge, opacity, 1, surfaceWidth, surfaceHeight);
 if (shadowOn)
 {
 if (pCached->Patch.HasShadow)
 {
-BlitGhostPatch(pSurface, pCached->Patch, groundScreen.X - pCached->Patch.FootX,
+++gDrawCalls; ScopedMs perfDraw(&gDrawMs); BlitGhostPatch(pSurface, pCached->Patch, groundScreen.X - pCached->Patch.FootX,
 groundScreen.Y - pCached->Patch.FootY, ghostTint, ghostEdge, opacity, 2, surfaceWidth, surfaceHeight);
 }
 else
@@ -1453,7 +1493,7 @@ opacity, surfaceWidth, surfaceHeight);
 }
 else
 {
-BlitGhostPatch(pSurface, pCached->Patch, screen.X - pCached->Patch.FootX,
+++gDrawCalls; ScopedMs perfDraw(&gDrawMs); BlitGhostPatch(pSurface, pCached->Patch, screen.X - pCached->Patch.FootX,
 screen.Y - pCached->Patch.FootY, ghostTint, ghostEdge, opacity, shadowOn ? 3 : 1,
 surfaceWidth, surfaceHeight);
 }
