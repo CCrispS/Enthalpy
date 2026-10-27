@@ -193,6 +193,10 @@ const bool left = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 const bool right = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
 return left && right;
 }
+
+bool FormationController::RightButtonDown(){
+	return (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+}
 HWND FormationController::GameWindow(){
 static HWND hwnd = nullptr;
 if (hwnd && IsWindow(hwnd))
@@ -1079,8 +1083,7 @@ leftWasDown_ = leftDown;
 rightWasDown_ = rightDown;
 }
 bool FormationController::ShouldSuppressClick(){
-const bool suppress = state_ == State::Dragging || suppressFrames_ > 0
-|| BothMouseButtonsDown();
+const bool suppress = state_ == State::Dragging || suppressFrames_ > 0 || BothMouseButtonsDown() || RightButtonDown();
 if (suppress != wasSuppressing_)
 {
 wasSuppressing_ = suppress;

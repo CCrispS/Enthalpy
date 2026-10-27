@@ -32,7 +32,7 @@ public:
 	// so a user with an unsupported setup gets a log line instead of a crash.
 	void Disable(const char* reason);
 
-	static bool BothMouseButtonsDown();
+	static bool BothMouseButtonsDown();	static bool RightButtonDown();
 	static bool CursorWorldPos(CoordStruct& out);
 	static bool CursorClientPos(Point2D& out);
 	static void ClientToWorld(const Point2D& client, CoordStruct& world);
