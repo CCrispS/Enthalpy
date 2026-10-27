@@ -309,6 +309,13 @@ buffer[count++] = pTechno;
 }
 return count;
 }
+bool FormationController::WithinCell(TechnoClass* pTechno, int cellX, int cellY)
+{
+	if (!pTechno)
+		return false;
+	return pTechno->GetCell() != nullptr && pTechno->GetCell()->MapCoords.X == static_cast<short>(cellX) && pTechno->GetCell()->MapCoords.Y == static_cast<short>(cellY);
+}
+
 bool FormationController::IsAlive(TechnoClass* pTechno){
 if (!pTechno || !TechnoClass::Array)
 return false;
@@ -780,7 +787,7 @@ CellClass* pCell = MapClass::Instance->TryGetCellAt(cell);
 if (!pCell)
 continue;
 pTechno->SetDestination(pCell, true);
-pTechno->QueueMission(Mission::Move, false);
+pTechno->ForceMission(Mission::Move);
 ++issued;
 if (pendingCount_ < kMaxUnits)
 {
@@ -949,23 +956,20 @@ const long long dy = static_cast<long long>(pTechno->Location.Y) - target.Y;
 	const bool home = (dx * dx + dy * dy <= static_cast<long long>(kArrivalRadius) * kArrivalRadius);
 	if (home)
 	{
-		// Arrived: end the move outright. Leaving a destination behind lets the engine keep a path
-		// back to the old spot, which is what made units wander off again after landing.
-		if (pFoot->Destination != nullptr)
-		{
-			pTechno->SetDestination(nullptr, true);
-			if (index < kMaxUnits)
-				reassertTries_[index] = kMaxReasserts;
-		}
+		// Arrived. Do NOT clear the destination: a Move mission whose destination turns null makes
+		// the unit revert to Guard, and Guard walks it back to where it originally stood - that is the
+		// "unit returns to the start point" symptom. Leaving the finished move alone is harmless.
+		if (index < kMaxUnits)
+			reassertTries_[index] = kMaxReasserts;
 		continue;
 	}
 	allHome = false;
 	// Only nudge a unit that has already stopped short of its cell, and only a couple of times:
 	// re-issuing while it is still driving just restarts its path over and over.
-	if (index < kMaxUnits && pFoot->Destination == nullptr && reassertTries_[index] < kMaxReasserts && (reassertFrames_ % 10) == 0)
+	if (index < kMaxUnits && pFoot->Destination == nullptr && reassertTries_[index] < kMaxReasserts && !WithinCell(pTechno, slots_[index].CellX, slots_[index].CellY) && (reassertFrames_ % 10) == 0)
 	{
 		pTechno->SetDestination(pCell, true);
-		pTechno->QueueMission(Mission::Move, false);
+		pTechno->ForceMission(Mission::Move);
 		++reassertTries_[index];
 	}
 }

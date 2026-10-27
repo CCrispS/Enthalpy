@@ -191,7 +191,7 @@ private:
 		DirStruct facing);
 
 	static int CollectSelected(TechnoClass** buffer, int capacity);
-	static bool IsAlive(TechnoClass* pTechno);
+	static bool IsAlive(TechnoClass* pTechno);	static bool WithinCell(TechnoClass* pTechno, int cellX, int cellY);
 
 	bool disabled_ = false;
 	bool warnedAboutMissingDraw_ = false;
