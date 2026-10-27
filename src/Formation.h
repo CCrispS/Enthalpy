@@ -163,6 +163,10 @@ private:
 
 	// Captures one unit's artwork into a patch (drawing it through the engine once), and
 	// blits an already captured patch onto the surface at a screen position.
+	// The raw draw-and-diff below runs engine code on a borrowed object, so it is wrapped in a
+	// SEH guard: a fault there must cost one ghost frame, never the whole game.
+	bool CaptureUnitGhostRaw(TechnoClass* pUnit, const CoordStruct& worldPos, DirStruct facing,
+		int clipWidth, int clipHeight, GhostPatch& patch);
 	bool CaptureUnitGhost(TechnoClass* pUnit, const CoordStruct& worldPos, DirStruct facing,
 		int clipWidth, int clipHeight, GhostPatch& patch);
 	// layers: bit 0 draws the body, bit 1 draws the shadow.  Aircraft draw the body at the
@@ -246,6 +250,10 @@ private:
 	bool rightWasDown_ = false;
 	bool leftReleasedFirst_ = false;
 	int reassertFrames_ = 0;
+	// How often a unit that stopped short of its cell may be nudged again; stops the
+	// supervisor from re-issuing a move every few frames for the same unit.
+	int reassertTries_[256] = {};
+	static constexpr int kMaxReasserts = 2;
 
 	PendingFacing pending_[256] = {};
 	int pendingCount_ = 0;

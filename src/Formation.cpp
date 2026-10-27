@@ -763,6 +763,8 @@ lastCellY = firstCellY;
 }}
 
 void FormationController::CommitOrders(){
+	for (int i = 0; i < kMaxUnits; ++i)
+		reassertTries_[i] = 0;
 int issued = 0;
 pendingCount_ = 0;
 for (int index = 0; index < unitCount_ && index < slotCount_; ++index)
@@ -943,18 +945,29 @@ continue;
 const CoordStruct target = CellCentre(slots_[index].CellX, slots_[index].CellY, 0, 0);
 const long long dx = static_cast<long long>(pTechno->Location.X) - target.X;
 const long long dy = static_cast<long long>(pTechno->Location.Y) - target.Y;
-if (dx * dx + dy * dy <= static_cast<long long>(kArrivalRadius)
-* kArrivalRadius)
-{
-continue;
-}
-allHome = false;
-auto pFoot = static_cast<FootClass*>(pTechno);
-if (pFoot->Destination != pCell && (reassertFrames_ % 10) == 0)
-{
-pTechno->SetDestination(pCell, true);
-pTechno->QueueMission(Mission::Move, false);
-}
+	auto pFoot = static_cast<FootClass*>(pTechno);
+	const bool home = (dx * dx + dy * dy <= static_cast<long long>(kArrivalRadius) * kArrivalRadius);
+	if (home)
+	{
+		// Arrived: end the move outright. Leaving a destination behind lets the engine keep a path
+		// back to the old spot, which is what made units wander off again after landing.
+		if (pFoot->Destination != nullptr)
+		{
+			pTechno->SetDestination(nullptr, true);
+			if (index < kMaxUnits)
+				reassertTries_[index] = kMaxReasserts;
+		}
+		continue;
+	}
+	allHome = false;
+	// Only nudge a unit that has already stopped short of its cell, and only a couple of times:
+	// re-issuing while it is still driving just restarts its path over and over.
+	if (index < kMaxUnits && pFoot->Destination == nullptr && reassertTries_[index] < kMaxReasserts && (reassertFrames_ % 10) == 0)
+	{
+		pTechno->SetDestination(pCell, true);
+		pTechno->QueueMission(Mission::Move, false);
+		++reassertTries_[index];
+	}
 }
 if (allHome)
 reassertFrames_ = 0;
@@ -1188,6 +1201,8 @@ const DWORD ghostEdge = slot.Snapped ? settings.ColorInvalidEdge : settings.Colo
 TechnoClass* pUnit = units_[index];
 TechnoTypeClass* pType = pUnit ? pUnit->GetTechnoType() : nullptr;
 const bool airInfantry = pUnit && pUnit->WhatAmI() == AbstractType::Infantry;
+	if (!IsAlive(pUnit))
+		continue;
 if (pUnit && pType)
 {
 const GhostCacheEntry* pCached = FindGhost(pUnit, centre, facingDir_);
@@ -1329,7 +1344,7 @@ static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 	return pUnit;
 }
 
-bool FormationController::CaptureUnitGhost(TechnoClass* pUnit, const CoordStruct& worldPos,
+bool FormationController::CaptureUnitGhostRaw(TechnoClass* pUnit, const CoordStruct& worldPos,
 DirStruct facing, int clipWidth, int clipHeight, GhostPatch& patch){
 if (!pUnit || !TacticalClass::Instance)
 return false;
@@ -1341,6 +1356,16 @@ return false;
 const AbstractType what = pUnit->WhatAmI();
 if (what != AbstractType::Unit && what != AbstractType::Infantry && what != AbstractType::Aircraft)
 return false;
+	// A unit being deployed (or undeployed) has its locomotor and drawing state torn down between
+	// frames; borrowing a draw from it crashes inside the engine. Same for a unit already gone.
+	if (pUnit->InLimbo)
+		return false;
+	if (what == AbstractType::Unit)
+	{
+		UnitClass* pUnitClass = static_cast<UnitClass*>(pUnit);
+		if (pUnitClass->Deploying || pUnitClass->Undeploying || pUnitClass->Deployed)
+			return false;
+	}
 TechnoTypeClass* pType = pUnit->GetTechnoType();
 if (!pType)
 return false;
@@ -1786,6 +1811,26 @@ int& FormationController::GhostCacheCount(){
 static int cacheCount = 0;
 return cacheCount;
 }
+bool FormationController::CaptureUnitGhost(TechnoClass* pUnit, const CoordStruct& worldPos,
+	DirStruct facing, int clipWidth, int clipHeight, GhostPatch& patch){
+	// Borrowing a draw runs a lot of engine code on an object that may be mid-transformation.
+	// A fault in there is not worth a crash: drop this ghost for now and let the next frame retry.
+	__try
+	{
+		return CaptureUnitGhostRaw(pUnit, worldPos, facing, clipWidth, clipHeight, patch);
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		static int faults = 0;
+		if (faults < 20)
+		{
+			++faults;
+			Logf("ghost capture: fault while borrowing a draw, skipped (total %d)", faults);
+		}
+		return false;
+	}
+}
+
 bool FormationController::GhostKey(TechnoClass* pUnit, const CoordStruct& worldPos,
 DirStruct facing, TechnoTypeClass*& pType, unsigned short& quantised){
 pType = nullptr;
@@ -1853,6 +1898,8 @@ const SlotPlan& slot = slots_[index];
 TechnoClass* pUnit = units_[index];
 if (!pUnit)
 continue;
+	if (!IsAlive(pUnit))
+		continue;
 TechnoTypeClass* pType = nullptr;
 unsigned short quantised = 0;
 if (!GhostKey(pUnit, CoordStruct{
