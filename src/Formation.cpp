@@ -890,6 +890,14 @@ Logf("formation: WARNING the ghost draw hook never ran; another plugin probably 
 if (cooldownFrames_ > 0)
 --cooldownFrames_;
 if (suppressFrames_ > 0)
+
+// The engine starts its own drag-select box the moment the left button goes down, which
+// leaves a white rectangle racing the formation preview.  Clearing the flag every frame
+// while a gesture is in progress keeps the box from ever appearing.
+if (state_ == State::Dragging && DisplayClass::Global())
+		DisplayClass::Global()->DraggingRectangle = false;
+	if (state_ == State::Dragging && DisplayClass::Global())
+		DisplayClass::Global()->DraggingRectangle = false;
 --suppressFrames_;
 ServicePendingFacings();
 PrepareGhosts();
@@ -1255,6 +1263,45 @@ opacity, 0, 0, surfaceWidth - 1, surfaceHeight - 1);
 // walking profile and vehicles use whatever track pose the engine last computed, which is
 // how slivers ended up in the cache and then on every ghost of that type.  Prefer a
 // stationary unit of the same type as the donor for the capture.
+// An occluder on the capture spot eats pixels out of the middle of a silhouette, leaving an
+// enclosed hole.  Anything the mask does not cover that cannot reach the border is such a
+// hole; filling it keeps the ghost complete no matter what was drawn there first.
+static void FillEnclosedHoles(unsigned char* mask)
+{
+	const int w = 192;
+	const int h = 192;
+	static unsigned char outside[w * h];
+	static int pending[w * h];
+	memset(outside, 0, sizeof(outside));
+	int pendingCount = 0;
+	for (int x = 0; x < w; ++x)
+	{
+		if (!mask[x] && !outside[x]) { outside[x] = 1; pending[pendingCount++] = x; }
+		const int bottom = (h - 1) * w + x;
+		if (!mask[bottom] && !outside[bottom]) { outside[bottom] = 1; pending[pendingCount++] = bottom; }
+	}
+	for (int y = 0; y < h; ++y)
+	{
+		const int left = y * w;
+		const int right = left + w - 1;
+		if (!mask[left] && !outside[left]) { outside[left] = 1; pending[pendingCount++] = left; }
+		if (!mask[right] && !outside[right]) { outside[right] = 1; pending[pendingCount++] = right; }
+	}
+	while (pendingCount > 0)
+	{
+		const int cell = pending[--pendingCount];
+		const int x = cell % w;
+		const int y = cell / w;
+		if (x > 0) { const int n = cell - 1; if (!mask[n] && !outside[n]) { outside[n] = 1; pending[pendingCount++] = n; } }
+		if (x + 1 < w) { const int n = cell + 1; if (!mask[n] && !outside[n]) { outside[n] = 1; pending[pendingCount++] = n; } }
+		if (y > 0) { const int n = cell - w; if (!mask[n] && !outside[n]) { outside[n] = 1; pending[pendingCount++] = n; } }
+		if (y + 1 < h) { const int n = cell + w; if (!mask[n] && !outside[n]) { outside[n] = 1; pending[pendingCount++] = n; } }
+	}
+	for (int cell = 0; cell < w * h; ++cell)
+		if (!mask[cell] && !outside[cell])
+			mask[cell] = 1;
+}
+
 static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 {
 	if (!pUnit)
@@ -1476,6 +1523,9 @@ pLoco->Do_Turn(oldFacing);
 			pSurface->SetPixel(&pixel, before[(y - capTop) * kBeforeStride + (x - capLeft)]);
 		}
 	}
+	// Seal enclosed holes so an occluder can never leave a bitten-out silhouette behind.
+	FillEnclosedHoles(patch.BodyMask);
+	FillEnclosedHoles(patch.Mask);
 	(void)behindOk;
 	if (!bodyOk || !fullOk)
 		return false;
