@@ -203,6 +203,8 @@ private:
 	// Frames in which the draw hook actually ran.  If Update keeps running but this stays
 	// zero, another plugin owns the draw address and the ghosts can never appear.
 	int drawFrames_ = 0;
+	int captureFailures_ = 0;
+	int captureBlockedUntil_ = 0;
 
 	State state_ = State::Idle;
 	int cooldownFrames_ = 0;

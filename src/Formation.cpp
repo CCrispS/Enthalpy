@@ -1821,11 +1821,11 @@ const DirStruct oldFacing = pUnit->Facing.target();
 const DirStruct oldTurretFacing = pUnit->TurretFacing.target();
 const bool oldNoShadow = pType->NoShadow;
 const int oldShadowIndex = pType->ShadowIndex;
-	// Clip the borrowed draw to the patch box. The engine happily paints outside the box for tall
-	// or tilted models, and those stray pixels stay on screen after the restore: they look like a
-	// silhouette that ignores GhostOpacity, and only vanish when something redraws that area.
-	RectangleStruct clip = { capLeft, capTop, capRight - capLeft, capBottom - capTop };
-ILocomotion* pLoco = nullptr;
+	// The clip stays the whole surface: a narrow clip rect sent the engine down a slow path and
+	// made it paint nothing at all. Stray pixels of the borrowed draw are cleaned up below by
+	// marking the restored rectangle dirty, so the engine repaints it on the next frame.
+	RectangleStruct clip = { 0, 0, clipWidth, clipHeight };
+	ILocomotion* pLoco = nullptr;
 int ownSlope = -1;
 {
 CellStruct destCell = CellClass::Coord2Cell(worldPos);
@@ -1930,6 +1930,15 @@ pLoco->Do_Turn(oldFacing);
 			pixel.Y = static_cast<short>(y);
 			pSurface->SetPixel(&pixel, before[(y - capTop) * kBeforeStride + (x - capLeft)]);
 		}
+	}
+	// The borrowed draw can paint past the saved rectangle on tall or tilted models, and those
+	// stray pixels are opaque copies of the real unit - they read as a silhouette that ignores
+	// GhostOpacity. Marking the restored rectangle dirty asks the engine to repaint it on the
+	// next frame, which is the sanctioned way to clear anything the restore missed.
+	if (TacticalClass::Instance)
+	{
+		RectangleStruct dirty = { capLeft, capTop, capRight - capLeft, capBottom - capTop };
+		TacticalClass::Instance->RegisterDirtyArea(dirty, true);
 	}
 if (zbSaved)
 {
@@ -2231,7 +2240,7 @@ captureCount = 0;
 }
 for (int index = 0; index < slotCount_; ++index)
 {
-if (captureCount >= kCapturesPerFrame)
+	if (captureCount >= kCapturesPerFrame || frameId_ < captureBlockedUntil_)
 return;
 const SlotPlan& slot = slots_[index];
 TechnoClass* pUnit = units_[index];
@@ -2296,6 +2305,14 @@ continue;
 		if (bodyPixels < bodyFloor)
 		{
 			Logf("ghost capture rejected: type=%p facing=%u body=%d", pType, quantised, bodyPixels);
+			// A capture that keeps failing must not be retried every frame: each attempt costs a
+			// borrowed engine draw plus a full box walk, which is exactly what made the game
+			// stutter when the borrowed draw could not paint anything.
+			if (++captureFailures_ > 8)
+			{
+				captureBlockedUntil_ = frameId_ + 120;
+				Logf("ghost capture paused for 120 frames after %d failures", captureFailures_);
+			}
 			continue;
 		}
 entry.Type = pType;
@@ -2350,8 +2367,10 @@ if (!edge)
 edge = !patch.BodyMask[cell - 1] || !patch.BodyMask[cell + 1]
 || !patch.BodyMask[cell - kGhostWidth] || !patch.BodyMask[cell + kGhostWidth];
 }
-			const int edgeOpacity = (opacity + 2 > 8) ? 8 : opacity + 2;
-const DWORD under = pSurface->GetPixel(&pixel);
+			// Same weight as the body: boosting the outline made every setting look solid, which
+			// is exactly the "GhostOpacity does nothing" report.
+			const DWORD under = pSurface->GetPixel(&pixel);
+			const int edgeOpacity = opacity;
 			pSurface->SetPixel(&pixel, Blend565(under, edge ? edgePixel : ghostPixel, edge ? edgeOpacity : opacity));
 }
 }}
