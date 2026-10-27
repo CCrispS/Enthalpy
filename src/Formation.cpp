@@ -1711,7 +1711,7 @@ CoordStruct cellPos = {
 if (CellWorldPos(cell.X, cell.Y, 0, 0, cellPos))
 target.Z = cellPos.Z;
 }
-	static const int kGhostMargin = 40;
+	static const int kGhostMargin = 96;   // room for everything the borrowed draw can touch
 	const int kBeforeStride = kGhostWidth + 2 * kGhostMargin;
 	const int kBeforeRows = kGhostHeight + 2 * kGhostMargin;
 	static DWORD before[kBeforeStride * kBeforeRows];
