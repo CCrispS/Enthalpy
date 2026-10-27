@@ -1,3 +1,12 @@
+## 2026-10-27 · 只读 Enthalpy.ini；水面合法性按移动类型
+
+- 设置只从 DLL 同级的 `Enthalpy.ini` 读取，`RA2MD.INI` 不再参与；缺键即用内置默认值，避免“到底哪个文件生效”的歧义。日志中的 `settings:` 行会打印当前值与来源文件。
+- 水面/陆地的合法性不再只按地形判断，而是按单位的 `SpeedType`：
+  - `Float`（船只）＝ 只允许水面；
+  - `FloatBeach` ＝ 水面与海滩；
+  - `Amphibious` / `Hover` / `Winged` ＝ 水面与陆地都允许；
+  - 其余（`Foot`/`Track`/`Wheel`，含步兵）＝ 只允许陆地。
+  岩石、墙、建筑与地形对象（树、石）仍然是障碍。
 ## 2026-10-27 · 每个键都可回落到原 mod 的 ini
 
 设置文件从 RA2MD.INI 迁到 Enthalpy.ini 之后，写在 RA2MD.INI 里的键会被静默忽略（看起来就像“这个开关失效了”）。现在每个键独立解析：先在 Enthalpy.ini 的 `[Enthalpy]` 里找，找不到再去 `RA2MD.INI` 里找同样的键。另新增一行 `settings: GhostOpacity=N ini=… legacy=…`，可直接从日志确认当前生效值与读取位置。

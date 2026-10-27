@@ -203,28 +203,63 @@ out.X += offsetX;
 out.Y += offsetY;
 return true;
 }
-bool IsUsableCell(CellClass* pCell)
+bool IsUsableCell(CellClass* pCell, TechnoClass* pUnit)
 {
-if (!pCell)
-return false;
-const LandType land = pCell->LandType;
-if (land == LandType::Water || land == LandType::Rock || land == LandType::Wall)
-return false;
-// Only real obstacles make a cell illegal: a building, or a terrain object such as a tree
-// or a rock. Units and infantry that merely stand on the cell are not obstacles - the
-// formation orders them away - so rejecting those cells painted dense rows red even though
-// the tanks could drive straight onto them.
-if (pCell->GetBuilding())
-return false;
-for (ObjectClass* pObject = pCell->FirstObject; pObject; pObject = pObject->NextObject)
-{
-const AbstractType what = pObject->WhatAmI();
-if (what == AbstractType::Building || what == AbstractType::Terrain)
-return false;
-}
-return true;
-}}
+	if (!pCell)
+		return false;
 
+	const LandType land = pCell->LandType;
+	if (land == LandType::Rock || land == LandType::Wall)
+		return false;
+
+	// Movement class decides water, not the map legend: a ship only floats, an amphibious or
+	// hover unit goes anywhere, a winged unit ignores the ground and everything else must stay
+	// on dry land. Without this a formation dropped near the shore painted land cells green for
+	// ships and water cells green for tanks. SpeedType::FloatBeach is the beaching variant and
+	// is allowed both on water and on beach, which is what LandType::Beach already means.
+	const SpeedType speed = (pUnit && pUnit->GetTechnoType())
+		? pUnit->GetTechnoType()->SpeedType : SpeedType::Track;
+	bool allowWater = false;
+	bool allowLand = true;
+	switch (speed)
+	{
+	case SpeedType::Float:
+		allowWater = true;
+		allowLand = false;
+		break;
+	case SpeedType::FloatBeach:
+		allowWater = true;
+		allowLand = (land == LandType::Beach);
+		break;
+	case SpeedType::Amphibious:
+	case SpeedType::Hover:
+	case SpeedType::Winged:
+		allowWater = true;
+		break;
+	default:
+		break;
+	}
+	if ((land == LandType::Water) && !allowWater)
+		return false;
+	if ((land != LandType::Water) && !allowLand)
+		return false;
+
+	// Only real obstacles make a cell illegal: a building, or a terrain object such as a tree
+	// or a rock. Units and infantry that merely stand on the cell are not obstacles - the
+	// formation orders them away - so rejecting those cells painted dense rows red even though
+	// the units could walk straight onto them.
+	if (pCell->GetBuilding())
+		return false;
+	for (ObjectClass* pObject = pCell->FirstObject; pObject; pObject = pObject->NextObject)
+	{
+		const AbstractType what = pObject->WhatAmI();
+		if (what == AbstractType::Building || what == AbstractType::Terrain)
+			return false;
+	}
+	return true;
+}
+
+}
 FormationController& FormationController::Instance(){
 static FormationController instance;
 return instance;
@@ -665,7 +700,7 @@ break;
 CellClass* pIdealCell = MapClass::Instance->TryGetCellAt(CellStruct{
 static_cast<short>(chosenX), static_cast<short>(chosenY) }
 );
-bool idealOk = IsUsableCell(pIdealCell);
+	bool idealOk = IsUsableCell(pIdealCell, units_[index]);
 // Two very different reasons land here: the ground itself refuses the cell (building,
 // tree, water, rock) or another slot of this same formation already claimed it. Only
 // the first one is worth a red ghost - a claimed cell is empty ground that one of the
@@ -706,7 +741,7 @@ const int candidateY = ideal.Y + offsetY;
 CellClass* pCandidate = MapClass::Instance->TryGetCellAt(CellStruct{
 static_cast<short>(candidateX), static_cast<short>(candidateY) }
 );
-if (!IsUsableCell(pCandidate) && !CellOnlyHoldsMovers(pCandidate))
+				if (!IsUsableCell(pCandidate, units_[index]) && !CellOnlyHoldsMovers(pCandidate))
 continue;
 bool taken = false;
 for (int c = 0; c < claimCount_; ++c)

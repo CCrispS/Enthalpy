@@ -106,12 +106,9 @@ namespace
 	// feature, so every read falls back to the legacy file when the key is absent.
 	DWORD ReadKey(const char* key, char* value, DWORD size)
 	{
-		DWORD length = GetPrivateProfileStringA("Enthalpy", key, "", value, size, g_IniPath);
-		if (length != 0)
-			return length;
-		if (g_LegacyPath[0] == '\0')
-			return 0;
-		return GetPrivateProfileStringA("Enthalpy", key, "", value, size, g_LegacyPath);
+		// One file only. Reading keys from several files made "why is this setting ignored"
+	// impossible to answer; a missing key now simply falls back to the compiled default.
+	return GetPrivateProfileStringA("Enthalpy", key, "", value, size, g_IniPath);
 	}
 
 	bool ReadBool(const char* path, const char* key, bool fallback)
@@ -214,7 +211,7 @@ values.ColorInvalidEdge = ReadColor(g_IniPath, "GhostColorInvalidEdge", values.C
 		else
 			values.GhostOpacity = opacity;
 
-		Logf("settings: GhostOpacity=%d ini=%s legacy=%s", values.GhostOpacity, g_IniPath, g_LegacyPath);
+		Logf("settings: GhostOpacity=%d ini=%s", values.GhostOpacity, g_IniPath);
 
 		g_Current = values;
 		return values;
