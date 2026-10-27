@@ -263,6 +263,9 @@ private:
 	// supervisor from re-issuing a move every few frames for the same unit.
 	int reassertTries_[256] = {};
 	bool wasHome_[256] = {};
+	bool permanent_[256] = {};
+	int permanentCount_ = 0;
+	DWORD lastPinLog_ = 0;
 	int keepTries_[256] = {};
 	static constexpr int kMaxKeepTries = 8;
 	static constexpr int kMaxReasserts = 2;

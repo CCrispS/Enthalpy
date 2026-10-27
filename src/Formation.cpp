@@ -799,11 +799,13 @@ lastCellY = firstCellY;
 }}
 
 void FormationController::CommitOrders(){
+	permanentCount_ = 0;
 	for (int i = 0; i < kMaxUnits; ++i)
 	{
 		reassertTries_[i] = 0;
 		wasHome_[i] = false;
 		keepTries_[i] = 0;
+		permanent_[i] = false;
 	}
 int issued = 0;
 pendingCount_ = 0;
@@ -812,6 +814,19 @@ for (int index = 0; index < unitCount_ && index < slotCount_; ++index)
 TechnoClass* pTechno = units_[index];
 if (!pTechno)
 continue;
+			{
+				TechnoTypeClass* pCommitType = pTechno->GetTechnoType();
+				const bool wantsAreaGuard = pCommitType && pCommitType->DefaultToGuardArea;
+				const bool isAircraft = pTechno->WhatAmI() == AbstractType::Aircraft;
+				permanent_[index] = wantsAreaGuard || isAircraft;
+				if (permanent_[index])
+				{
+					++permanentCount_;
+					Logf("keep: %s %p stays pinned (guardArea=%d aircraft=%d)",
+						pCommitType ? pCommitType->ID : "?", pTechno,
+						wantsAreaGuard ? 1 : 0, isAircraft ? 1 : 0);
+				}
+			}
 const CellStruct cell = {
  static_cast<short>(slots_[index].CellX),
 static_cast<short>(slots_[index].CellY) }
@@ -1080,10 +1095,13 @@ Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 }
 }
 	if (trackFrames_ > 0)
-	{
 		--trackFrames_;
+	if (trackFrames_ > 0 || permanentCount_ > 0)
+	{
 		for (int index = 0; index < unitCount_ && index < slotCount_; ++index)
 		{
+			if (trackFrames_ == 0 && !permanent_[index])
+				continue;
 			TechnoClass* pTechno = units_[index];
 			if (!pTechno || !IsAlive(pTechno))
 				continue;
@@ -1098,19 +1116,27 @@ Logf("selection: %d unit(s) selected, snapshot=%d", live, snapshotCount_);
 			const bool inCell = WithinCell(pTechno, slots_[index].CellX, slots_[index].CellY);
 			if (index < kMaxUnits && (dist <= kArrivalRadius || inCell))
 				wasHome_[index] = true;
-			// Keep the unit on a plain Move whose destination is its own cell. Move is the only
-			// mission the engine will not turn into a walk-back: Guard remembers the guard cell
-			// and Area Guard patrols the area it was assigned, which for a freshly ordered unit
-			// is where it came from. Re-issuing Move on the cell every time the engine has
-			// changed the mission means the unit simply stands there, whichever mission a team
-			// script hands it.
+			// Keep the unit on a plain Move whose destination is its own cell. Guard remembers a
+			// guard cell and Area Guard patrols the area it was given, and for a unit that has
+			// just been ordered somewhere that area is where it came from. Move onto the unit's
+			// own cell is the only order that means stand exactly here. Types carrying
+			// DefaultToGuardArea get Area Guard handed back to them over and over by the engine,
+			// so those units keep the pin for the whole match instead of a short window.
 			if (index < kMaxUnits && wasHome_[index] && pKeepCell &&
 				(pTechno->CurrentMission != Mission::Move || pFoot->Destination != pKeepCell))
 			{
-				if ((trackFrames_ % 60) == 0 && pTechno->CurrentMission != Mission::Move)
-					Logf("pin: %s %p was mission=%d in cell (%d,%d) dist=%lld", pType ? pType->ID : "?",
-						pTechno, static_cast<int>(pTechno->CurrentMission),
-						slots_[index].CellX, slots_[index].CellY, dist);
+				if (pTechno->CurrentMission != Mission::Move)
+				{
+					const DWORD nowTick = GetTickCount();
+					if (nowTick - lastPinLog_ >= 1000)
+					{
+						lastPinLog_ = nowTick;
+						Logf("pin: %s %p was mission=%d guardArea=%d in cell (%d,%d) dist=%lld",
+							pType ? pType->ID : "?", pTechno, static_cast<int>(pTechno->CurrentMission),
+							pType ? static_cast<int>(pType->DefaultToGuardArea) : -1,
+							slots_[index].CellX, slots_[index].CellY, dist);
+					}
+				}
 				pTechno->SetDestination(pKeepCell, true);
 				pTechno->ForceMission(Mission::Move);
 			}
