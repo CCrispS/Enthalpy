@@ -2478,11 +2478,11 @@ edge = !patch.BodyMask[cell - 1] || !patch.BodyMask[cell + 1]
 			// Same weight as the body: boosting the outline made every setting look solid, which
 			// is exactly the "GhostOpacity does nothing" report.
 			const DWORD under = pSurface->GetPixel(&pixel);
-			const int edgeOpacity = opacity;
+			// 描边恒定不透明；GhostOpacity=4（opacity 8）表示“完全实体”，此时按需求不画描边。
 			// The outline keeps the configured colour at full strength; only the body follows
 			// GhostOpacity. Dimming the outline by terrain brightness made every edge colour
 			// look washed out, which is exactly the "edge colour is gone" report.
-			if (edge)
+			if (edge && opacity < 8)
 				pSurface->SetPixel(&pixel, Blend565(under, edgePixel, 8));
 			else
 				pSurface->SetPixel(&pixel, Blend565(under, ghostPixel, opacity));
