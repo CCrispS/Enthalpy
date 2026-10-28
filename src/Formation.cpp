@@ -1426,6 +1426,13 @@ bool FormationController::ShouldSuppressClick(){
 // 捕获放在更早的 Update() 里，那一帧的世界绘制会把痕迹覆盖掉。
 // 每帧只允许一遍：混合两遍等于把透明度翻倍，ini 调了也看不出效果。
 void FormationController::DrawPreview(){
+	static long long lastDrawTick = 0;
+	LARGE_INTEGER nowTick; QueryPerformanceCounter(&nowTick);
+	LARGE_INTEGER freq; QueryPerformanceFrequency(&freq);
+	const long long elapsedMs = freq.QuadPart > 0 ? (nowTick.QuadPart - lastDrawTick) * 1000 / freq.QuadPart : 1000;
+	if (lastDrawTick != 0 && elapsedMs < 10)
+		return;
+	lastDrawTick = nowTick.QuadPart;
 if (disabled_)
 return;
 ++drawFrames_;
@@ -2488,6 +2495,6 @@ edge = !patch.BodyMask[cell - 1] || !patch.BodyMask[cell + 1]
 				// 描边必须和本体走同一条 0..4 梯度：0 全透明、2 半透明、4 不透明。
 				pSurface->SetPixel(&pixel, Blend565(under, edgePixel, edgeOpacity));
 			else
-				pSurface->SetPixel(&pixel, BlendGhost565(under, ghostPixel, opacity));
+				pSurface->SetPixel(&pixel, Blend565(under, ghostPixel, opacity));
 }
 }}
