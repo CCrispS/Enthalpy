@@ -2219,15 +2219,17 @@ hasShadow = true;
 		}
 		hasShadow = false;
 	}
-if (AirHeightFor(pUnit) > 0)
-{
-for (int cell = 0; cell < kGhostWidth * kGhostHeight; ++cell)
-{
-if (patch.Mask[cell])
-patch.BodyMask[cell] = 1;
-}
-hasShadow = false;
-}
+	if (AirHeightFor(pUnit) > 0)
+	{
+		// 飞行单位不画任何捕获到的影子：那些像素是飞行高度投影，不是地面阴影。
+		// 全部丢弃，影子统一由 DrawPreview 里的合成椭圆表现。
+		for (int cell = 0; cell < kGhostWidth * kGhostHeight; ++cell)
+		{
+			if (patch.Mask[cell] && !patch.BodyMask[cell])
+				patch.Mask[cell] = 0;
+		}
+		hasShadow = false;
+	}
 patch.HasShadow = hasShadow;
 	patch.WaterPatch = waterCapture;
 }
