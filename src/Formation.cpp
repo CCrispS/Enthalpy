@@ -2462,6 +2462,12 @@ edge = !patch.BodyMask[cell - 1] || !patch.BodyMask[cell + 1]
 			// is exactly the "GhostOpacity does nothing" report.
 			const DWORD under = pSurface->GetPixel(&pixel);
 			const int edgeOpacity = opacity;
-			pSurface->SetPixel(&pixel, BlendGhost565(under, edge ? edgePixel : ghostPixel, edge ? edgeOpacity : opacity));
+			// The outline keeps the configured colour at full strength; only the body follows
+			// GhostOpacity. Dimming the outline by terrain brightness made every edge colour
+			// look washed out, which is exactly the "edge colour is gone" report.
+			if (edge)
+				pSurface->SetPixel(&pixel, Blend565(under, edgePixel, 8));
+			else
+				pSurface->SetPixel(&pixel, BlendGhost565(under, ghostPixel, opacity));
 }
 }}
