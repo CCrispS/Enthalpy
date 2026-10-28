@@ -1,17 +1,17 @@
-// Enthalpy —— 尤里的复仇「红色警戒3 式列队」独立 Syringe 插件。
+// Enthalpy 鈥斺€?灏ら噷鐨勫浠囥€岀孩鑹茶鎴? 寮忓垪闃熴€嶇嫭绔?Syringe 鎻掍欢銆?
 //
-// 每帧的执行顺序：
-//   1. Update()        读鼠标、跑手势状态机、把已到位的单位钉在格子里、驱动最终朝向；
-//   2. ComputeLayout() 把光标算成「每个单位一个目标格」（障碍、占位、步兵子格、飞行高度）；
-//   3. PrepareGhosts() 在帧渲染之前把剪影缓存填好；
-//   4. DrawPreview()   只贴缓存，绝不在渲染过程中捕获；
-//   5. CommitOrders()  松手时下单，并给 keeper（保管者）上膛。
+// 姣忓抚鐨勬墽琛岄『搴忥細
+//   1. Update()        璇婚紶鏍囥€佽窇鎵嬪娍鐘舵€佹満銆佹妸宸插埌浣嶇殑鍗曚綅閽夊湪鏍煎瓙閲屻€侀┍鍔ㄦ渶缁堟湞鍚戯紱
+//   2. ComputeLayout() 鎶婂厜鏍囩畻鎴愩€屾瘡涓崟浣嶄竴涓洰鏍囨牸銆嶏紙闅滅銆佸崰浣嶃€佹鍏靛瓙鏍笺€侀琛岄珮搴︼級锛?
+//   3. PrepareGhosts() 鍦ㄥ抚娓叉煋涔嬪墠鎶婂壀褰辩紦瀛樺～濂斤紱
+//   4. DrawPreview()   鍙创缂撳瓨锛岀粷涓嶅湪娓叉煋杩囩▼涓崟鑾凤紱
+//   5. CommitOrders()  鏉炬墜鏃朵笅鍗曪紝骞剁粰 keeper锛堜繚绠¤€咃級涓婅啗銆?
 //
-// 剪影不是手画的：CaptureUnitGhostRaw 借引擎自己画一遍单位到战术表面，
-// 用哨兵色做差集得到两张位掩码，之后由 DrawPreview 混合上屏——所以捕获代码看着很奇怪。
+// 鍓奖涓嶆槸鎵嬬敾鐨勶細CaptureUnitGhostRaw 鍊熷紩鎿庤嚜宸辩敾涓€閬嶅崟浣嶅埌鎴樻湳琛ㄩ潰锛?
+// 鐢ㄥ摠鍏佃壊鍋氬樊闆嗗緱鍒颁袱寮犱綅鎺╃爜锛屼箣鍚庣敱 DrawPreview 娣峰悎涓婂睆鈥斺€旀墍浠ユ崟鑾蜂唬鐮佺湅鐫€寰堝鎬€?
 //
-// 本文件曾因一次编辑事故被机械重建，注释全部丢失；以下注释是事后按原意补写的，
-// 讲的是「为什么这么做」，不只是「做了什么」。
+// 鏈枃浠舵浘鍥犱竴娆＄紪杈戜簨鏁呰鏈烘閲嶅缓锛屾敞閲婂叏閮ㄤ涪澶憋紱浠ヤ笅娉ㄩ噴鏄簨鍚庢寜鍘熸剰琛ュ啓鐨勶紝
+// 璁茬殑鏄€屼负浠€涔堣繖涔堝仛銆嶏紝涓嶅彧鏄€屽仛浜嗕粈涔堛€嶃€?
 
 #include "Formation.h"
 #include "Log.h"
@@ -201,8 +201,8 @@ result.X += offsetX;
 result.Y += offsetY;
 return result;
 }
-// 取格子中心的世界坐标，含地形层高与桥面高度（GetCoordsWithBridge），
-// 这样斜坡上的剪影贴着坡面，而不是贴在坡下的平地。
+// 鍙栨牸瀛愪腑蹇冪殑涓栫晫鍧愭爣锛屽惈鍦板舰灞傞珮涓庢ˉ闈㈤珮搴︼紙GetCoordsWithBridge锛夛紝
+// 杩欐牱鏂滃潯涓婄殑鍓奖璐寸潃鍧￠潰锛岃€屼笉鏄创鍦ㄥ潯涓嬬殑骞冲湴銆?
 bool CellWorldPos(int cellX, int cellY, int offsetX, int offsetY, CoordStruct& out)
 {
 if (!MapClass::Instance)
@@ -218,11 +218,11 @@ out.X += offsetX;
 out.Y += offsetY;
 return true;
 }
-// 判断这个格子能不能站这个单位，两件独立的事：
-//   * 单位本身能不能在那——水/陆按单位的 SpeedType 判，不按地形图例，所以船不会上草地、
-//     坦克不会下水；
-//   * 格子是不是被挡住——只有建筑和地形对象（树、石）算障碍，站在那儿的单位不算，
-//     因为列队本身会把它们调走。
+// 鍒ゆ柇杩欎釜鏍煎瓙鑳戒笉鑳界珯杩欎釜鍗曚綅锛屼袱浠剁嫭绔嬬殑浜嬶細
+//   * 鍗曚綅鏈韩鑳戒笉鑳藉湪閭ｂ€斺€旀按/闄嗘寜鍗曚綅鐨?SpeedType 鍒わ紝涓嶆寜鍦板舰鍥句緥锛屾墍浠ヨ埞涓嶄細涓婅崏鍦般€?
+//     鍧﹀厠涓嶄細涓嬫按锛?
+//   * 鏍煎瓙鏄笉鏄鎸′綇鈥斺€斿彧鏈夊缓绛戝拰鍦板舰瀵硅薄锛堟爲銆佺煶锛夌畻闅滅锛岀珯鍦ㄩ偅鍎跨殑鍗曚綅涓嶇畻锛?
+//     鍥犱负鍒楅槦鏈韩浼氭妸瀹冧滑璋冭蛋銆?
 bool IsUsableCell(CellClass* pCell, TechnoClass* pUnit)
 {
 	if (!pCell)
@@ -297,8 +297,8 @@ bool FormationController::RightButtonDown(){
 bool FormationController::MiddleButtonDown(){
 	return (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
 }
-// 用 Win32 找游戏窗口，而不是 WWMouseClass：这个 build 里引擎的鼠标对象与头文件布局
-// 不一致，按头文件写会踩坏栈（早期就是这么崩的）。
+// 鐢?Win32 鎵炬父鎴忕獥鍙ｏ紝鑰屼笉鏄?WWMouseClass锛氳繖涓?build 閲屽紩鎿庣殑榧犳爣瀵硅薄涓庡ご鏂囦欢甯冨眬
+// 涓嶄竴鑷达紝鎸夊ご鏂囦欢鍐欎細韪╁潖鏍堬紙鏃╂湡灏辨槸杩欎箞宕╃殑锛夈€?
 HWND FormationController::GameWindow(){
 static HWND hwnd = nullptr;
 if (hwnd && IsWindow(hwnd))
@@ -341,9 +341,9 @@ out.X = point.x;
 out.Y = point.y;
 return true;
 }
-// 光标转世界坐标。引擎的 ClientToCoords 只解算平面，所以先把结果抬到所在格的高度，
-// 再反投影回屏幕用残差修正，迭代几轮取残差最小的那次。另外做了一格的迟滞，
-// 避免光标压在格子边界上时布局来回抖。
+// 鍏夋爣杞笘鐣屽潗鏍囥€傚紩鎿庣殑 ClientToCoords 鍙В绠楀钩闈紝鎵€浠ュ厛鎶婄粨鏋滄姮鍒版墍鍦ㄦ牸鐨勯珮搴︼紝
+// 鍐嶅弽鎶曞奖鍥炲睆骞曠敤娈嬪樊淇锛岃凯浠ｅ嚑杞彇娈嬪樊鏈€灏忕殑閭ｆ銆傚彟澶栧仛浜嗕竴鏍肩殑杩熸粸锛?
+// 閬垮厤鍏夋爣鍘嬪湪鏍煎瓙杈圭晫涓婃椂甯冨眬鏉ュ洖鎶栥€?
 bool FormationController::CursorWorldPos(CoordStruct& out){
 if (!TacticalClass::Instance)
 return false;
@@ -394,8 +394,8 @@ return false;
 out = best;
 return true;
 }
-// 引擎 ABI：这个 build 的 ClientToCoords 是「目标 CoordStruct 在前、屏幕点在后」，
-// 与 YRpp 的声明正好相反。这里故意用相反的指针类型互转，请不要「顺手修正」。
+// 寮曟搸 ABI锛氳繖涓?build 鐨?ClientToCoords 鏄€岀洰鏍?CoordStruct 鍦ㄥ墠銆佸睆骞曠偣鍦ㄥ悗銆嶏紝
+// 涓?YRpp 鐨勫０鏄庢濂界浉鍙嶃€傝繖閲屾晠鎰忕敤鐩稿弽鐨勬寚閽堢被鍨嬩簰杞紝璇蜂笉瑕併€岄『鎵嬩慨姝ｃ€嶃€?
 void FormationController::ClientToWorld(const Point2D& client, CoordStruct& world){
 if (!TacticalClass::Instance)
 return;
@@ -437,8 +437,8 @@ return true;
 }
 return false;
 }
-// 选择快照：一次手势从头到尾都作用在「按下时选中的那批单位」上，
-// 即使中途引擎把选择清掉了也照样工作。
+// 閫夋嫨蹇収锛氫竴娆℃墜鍔夸粠澶村埌灏鹃兘浣滅敤鍦ㄣ€屾寜涓嬫椂閫変腑鐨勯偅鎵瑰崟浣嶃€嶄笂锛?
+// 鍗充娇涓€斿紩鎿庢妸閫夋嫨娓呮帀浜嗕篃鐓ф牱宸ヤ綔銆?
 void FormationController::GatherSelectedUnits(){
 unitCount_ = CollectSelected(units_, kMaxUnits);
 for (int i = 1; i < unitCount_; ++i)
@@ -542,7 +542,7 @@ return true;
 static constexpr int kAirThreshold = 96;
 
 
-// 飞行单位的显示高度：飞机取 Rules 的 FlightLevel，跳跳车按它悬停格上方的高度差判断。
+// 椋炶鍗曚綅鐨勬樉绀洪珮搴︼細椋炴満鍙?Rules 鐨?FlightLevel锛岃烦璺宠溅鎸夊畠鎮仠鏍间笂鏂圭殑楂樺害宸垽鏂€?
 static int AirHeightFor(TechnoClass* pUnit)
 {
 	if (!pUnit)
@@ -566,9 +566,9 @@ static int AirHeightFor(TechnoClass* pUnit)
 // target cell.  Voxel art carries no shadow pixels of its own, in which case a soft ellipse
 // is stamped under the cell instead.
 static void DrawGroundShadow(Surface* pSurface, const Point2D& centre, int width, int height,
-// 把缓存里的剪影混合到表面。opacity 以「八分之一」为单位（GhostOpacity 0..4 映射到 0..8），
-// 描边用同样权重，这样每一档都看得出差别。layers 是位掩码：bit0 画本体、bit1 画影子——
-// 飞行单位本体画在飞行高度、影子画在地面，所以要分两次贴。
+// 鎶婄紦瀛橀噷鐨勫壀褰辨贩鍚堝埌琛ㄩ潰銆俹pacity 浠ャ€屽叓鍒嗕箣涓€銆嶄负鍗曚綅锛圙hostOpacity 0..4 鏄犲皠鍒?0..8锛夛紝
+// 鎻忚竟鐢ㄥ悓鏍锋潈閲嶏紝杩欐牱姣忎竴妗ｉ兘鐪嬪緱鍑哄樊鍒€俵ayers 鏄綅鎺╃爜锛歜it0 鐢绘湰浣撱€乥it1 鐢诲奖瀛愨€斺€?
+// 椋炶鍗曚綅鏈綋鐢诲湪椋炶楂樺害銆佸奖瀛愮敾鍦ㄥ湴闈紝鎵€浠ヨ鍒嗕袱娆¤创銆?
 	int opacity, int clipWidth, int clipHeight)
 {
 	if (!pSurface || opacity <= 0)
@@ -600,10 +600,10 @@ static void DrawGroundShadow(Surface* pSurface, const Point2D& centre, int width
 		}
 	}
 }
-// 按当前光标位置，为每个选中单位算一个目标格。顺序很重要：
-// 锚点所在的格是第一个单位的理想格；有障碍时环形搜索最近的合法格；被同队其它格位先占的
-// 格子只是把当前格位顺移（不会标红——红表示地面本身不可用）；步兵一格三人，格内位置直接
-// 问引擎的 FindInfantrySubposition；飞行单位额外得到飞行高度和地面影子格。
+// 鎸夊綋鍓嶅厜鏍囦綅缃紝涓烘瘡涓€変腑鍗曚綅绠椾竴涓洰鏍囨牸銆傞『搴忓緢閲嶈锛?
+// 閿氱偣鎵€鍦ㄧ殑鏍兼槸绗竴涓崟浣嶇殑鐞嗘兂鏍硷紱鏈夐殰纰嶆椂鐜舰鎼滅储鏈€杩戠殑鍚堟硶鏍硷紱琚悓闃熷叾瀹冩牸浣嶅厛鍗犵殑
+// 鏍煎瓙鍙槸鎶婂綋鍓嶆牸浣嶉『绉伙紙涓嶄細鏍囩孩鈥斺€旂孩琛ㄧず鍦伴潰鏈韩涓嶅彲鐢級锛涙鍏典竴鏍间笁浜猴紝鏍煎唴浣嶇疆鐩存帴
+// 闂紩鎿庣殑 FindInfantrySubposition锛涢琛屽崟浣嶉澶栧緱鍒伴琛岄珮搴﹀拰鍦伴潰褰卞瓙鏍笺€?
 void FormationController::ComputeLayout(){
 CoordStruct candidate = {
  0, 0, 0 }
@@ -899,10 +899,10 @@ lastCellY = firstCellY;
 }
 }}
 
-// 真正下单。只 SetDestination 不够：引擎会把上一条 mission 留在队列里，上一次手势残留的
-// Move 可能在这次任务结束后才执行，看起来就像「单位自己又跑回去了」。所以必须 ForceMission
-// 让新命令立刻成为当前任务。这里同时给 keeper 上膛（trackFrames_、wasHome_、permanent_），
-// 并准备 ServicePendingFacings 要用的朝向记录。
+// 鐪熸涓嬪崟銆傚彧 SetDestination 涓嶅锛氬紩鎿庝細鎶婁笂涓€鏉?mission 鐣欏湪闃熷垪閲岋紝涓婁竴娆℃墜鍔挎畫鐣欑殑
+// Move 鍙兘鍦ㄨ繖娆′换鍔＄粨鏉熷悗鎵嶆墽琛岋紝鐪嬭捣鏉ュ氨鍍忋€屽崟浣嶈嚜宸卞張璺戝洖鍘讳簡銆嶃€傛墍浠ュ繀椤?ForceMission
+// 璁╂柊鍛戒护绔嬪埢鎴愪负褰撳墠浠诲姟銆傝繖閲屽悓鏃剁粰 keeper 涓婅啗锛坱rackFrames_銆亀asHome_銆乸ermanent_锛夛紝
+// 骞跺噯澶?ServicePendingFacings 瑕佺敤鐨勬湞鍚戣褰曘€?
 void FormationController::CommitOrders(){
 	permanentCount_ = 0;
 	releaseGuard_ = 90;
@@ -964,11 +964,11 @@ Logf("formation: commit %d/%d orders (columns=%d ranks=%d spacingCells=%d anchor
 issued, unitCount_, columns_, ranks_, spacingCells_, anchor_.X, anchor_.Y,
 static_cast<int>(facingDir_.value()));
 }
-// 让每个已到位的单位转到剪影显示的朝向，然后把它从所有「带着目的地」的任务里摘出来（Stop）。
-// Guard / Area Guard / Move 都带着一个目的地——也就是它的出发点——引擎于是会把它走回去；
-// Stop 不带目的地，所以不会再动。
-// 转向按帧请求，引擎才会按单位自身的转向速度平滑转；但一旦到位就停止请求，
-// 否则每帧重新请求会让单位原地打转。
+// 璁╂瘡涓凡鍒颁綅鐨勫崟浣嶈浆鍒板壀褰辨樉绀虹殑鏈濆悜锛岀劧鍚庢妸瀹冧粠鎵€鏈夈€屽甫鐫€鐩殑鍦般€嶇殑浠诲姟閲屾憳鍑烘潵锛圫top锛夈€?
+// Guard / Area Guard / Move 閮藉甫鐫€涓€涓洰鐨勫湴鈥斺€斾篃灏辨槸瀹冪殑鍑哄彂鐐光€斺€斿紩鎿庝簬鏄細鎶婂畠璧板洖鍘伙紱
+// Stop 涓嶅甫鐩殑鍦帮紝鎵€浠ヤ笉浼氬啀鍔ㄣ€?
+// 杞悜鎸夊抚璇锋眰锛屽紩鎿庢墠浼氭寜鍗曚綅鑷韩鐨勮浆鍚戦€熷害骞虫粦杞紱浣嗕竴鏃﹀埌浣嶅氨鍋滄璇锋眰锛?
+// 鍚﹀垯姣忓抚閲嶆柊璇锋眰浼氳鍗曚綅鍘熷湴鎵撹浆銆?
 void FormationController::ServicePendingFacings(){
 	int alive = 0;
 	for (int index = 0; index < pendingCount_; ++index)
@@ -1084,7 +1084,7 @@ void FormationController::ServicePendingFacings(){
 	}
 	pendingCount_ = alive;
 }
-// 兜底：出现无法恢复的异常就把插件整体停掉，而不是留一个半残的手势干扰玩家。
+// 鍏滃簳锛氬嚭鐜版棤娉曟仮澶嶇殑寮傚父灏辨妸鎻掍欢鏁翠綋鍋滄帀锛岃€屼笉鏄暀涓€涓崐娈嬬殑鎵嬪娍骞叉壈鐜╁銆?
 void FormationController::Disable(const char* reason)
 {
 if (disabled_)
@@ -1094,11 +1094,11 @@ disabled_ = true;
 Logf("formation: disabled - %s", reason ? reason : "unspecified");
 }
 
-// 手势状态机 + keeper（保管者）。三个状态：
-//   Idle      中键松开，等一次新的按下（且要有选中单位）；
-//   Dragging  中键按住，持续重算布局，DrawPreview 负责画；
-//   Cooldown  松手之后，用来吞掉这次松开本身产生的那一下点击。
-// 下面的 keeper 绝不重新发起行军：它只钉住「已经站在自己格子里」的单位。
+// 鎵嬪娍鐘舵€佹満 + keeper锛堜繚绠¤€咃級銆備笁涓姸鎬侊細
+//   Idle      涓敭鏉惧紑锛岀瓑涓€娆℃柊鐨勬寜涓嬶紙涓旇鏈夐€変腑鍗曚綅锛夛紱
+//   Dragging  涓敭鎸変綇锛屾寔缁噸绠楀竷灞€锛孌rawPreview 璐熻矗鐢伙紱
+//   Cooldown  鏉炬墜涔嬪悗锛岀敤鏉ュ悶鎺夎繖娆℃澗寮€鏈韩浜х敓鐨勯偅涓€涓嬬偣鍑汇€?
+// 涓嬮潰鐨?keeper 缁濅笉閲嶆柊鍙戣捣琛屽啗锛氬畠鍙拤浣忋€屽凡缁忕珯鍦ㄨ嚜宸辨牸瀛愰噷銆嶇殑鍗曚綅銆?
 void FormationController::Update(){
 if (disabled_)
 return;
@@ -1388,8 +1388,8 @@ leftWasDown_ = leftDown;
 rightWasDown_ = rightDown;
 middleWasDown_ = middleDown;
 }
-// 返回真时，引擎不许把这次点击变成命令。没有它，手势过程中松开左键就会让选中单位
-// 朝光标位置跑过去，整个手势就废了。这里故意写得很窄：单纯的右键仍然要能取消选择。
+// 杩斿洖鐪熸椂锛屽紩鎿庝笉璁告妸杩欐鐐瑰嚮鍙樻垚鍛戒护銆傛病鏈夊畠锛屾墜鍔胯繃绋嬩腑鏉惧紑宸﹂敭灏变細璁╅€変腑鍗曚綅
+// 鏈濆厜鏍囦綅缃窇杩囧幓锛屾暣涓墜鍔垮氨搴熶簡銆傝繖閲屾晠鎰忓啓寰楀緢绐勶細鍗曠函鐨勫彸閿粛鐒惰鑳藉彇娑堥€夋嫨銆?
 bool FormationController::ShouldSuppressClick(){
 	// Suppress only while a formation gesture is (or may be) under way: the right button
 	// must be held AND the left button must have been down at some point during that hold.
@@ -1422,9 +1422,9 @@ bool FormationController::ShouldSuppressClick(){
 	return suppress;
 }
 
-// 只用缓存画预览。不能在这里捕获——那会把「借来的单位」画进正在渲染的这一帧；
-// 捕获放在更早的 Update() 里，那一帧的世界绘制会把痕迹覆盖掉。
-// 每帧只允许一遍：混合两遍等于把透明度翻倍，ini 调了也看不出效果。
+// 鍙敤缂撳瓨鐢婚瑙堛€備笉鑳藉湪杩欓噷鎹曡幏鈥斺€旈偅浼氭妸銆屽€熸潵鐨勫崟浣嶃€嶇敾杩涙鍦ㄦ覆鏌撶殑杩欎竴甯э紱
+// 鎹曡幏鏀惧湪鏇存棭鐨?Update() 閲岋紝閭ｄ竴甯х殑涓栫晫缁樺埗浼氭妸鐥曡抗瑕嗙洊鎺夈€?
+// 姣忓抚鍙厑璁镐竴閬嶏細娣峰悎涓ら亶绛変簬鎶婇€忔槑搴︾炕鍊嶏紝ini 璋冧簡涔熺湅涓嶅嚭鏁堟灉銆?
 void FormationController::DrawPreview(){
 	static long long lastDrawTick = 0;
 	LARGE_INTEGER nowTick; QueryPerformanceCounter(&nowTick);
@@ -1634,8 +1634,8 @@ opacity, 0, 0, surfaceWidth - 1, surfaceHeight - 1);
 // An occluder on the capture spot eats pixels out of the middle of a silhouette, leaving an
 // enclosed hole.  Anything the mask does not cover that cannot reach the border is such a
 // hole; filling it keeps the ghost complete no matter what was drawn there first.
-// 把遮挡在剪影内部留下的洞补上：从边界做泛洪，能到达的是外部，
-// 剩下没被访问到的掩码像素就是被包住的洞，直接并入本体。
+// 鎶婇伄鎸″湪鍓奖鍐呴儴鐣欎笅鐨勬礊琛ヤ笂锛氫粠杈圭晫鍋氭硾娲紝鑳藉埌杈剧殑鏄閮紝
+// 鍓╀笅娌¤璁块棶鍒扮殑鎺╃爜鍍忕礌灏辨槸琚寘浣忕殑娲烇紝鐩存帴骞跺叆鏈綋銆?
 static void FillEnclosedHoles(unsigned char* mask)
 {
 	const int w = 192;
@@ -1672,8 +1672,8 @@ static void FillEnclosedHoles(unsigned char* mask)
 			mask[cell] = 1;
 }
 
-// 优先挑一个「站着不动的同类型单位」来借画：正在行驶或正在展开的单位容易画出残片，
-// 而一个坏形状会被该类型的所有剪影复用，必须避免。
+// 浼樺厛鎸戜竴涓€岀珯鐫€涓嶅姩鐨勫悓绫诲瀷鍗曚綅銆嶆潵鍊熺敾锛氭鍦ㄨ椹舵垨姝ｅ湪灞曞紑鐨勫崟浣嶅鏄撶敾鍑烘畫鐗囷紝
+// 鑰屼竴涓潖褰㈢姸浼氳璇ョ被鍨嬬殑鎵€鏈夊壀褰卞鐢紝蹇呴』閬垮厤銆?
 static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 {
 	if (!pUnit)
@@ -1704,9 +1704,9 @@ static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 // pushed to the far plane, but an object standing in the box still paints its own pixels
 // back over the box after the flood, and those pixels then read as "not the sentinel"
 // and survive as a hole in the mask forever (the mask is cached per type).
-// 捕获剪影的方式是「把单位画在世界坐标上」，所以那个坐标必须没有物体：如果那里有树或
-// 建筑，会被哨兵填充抹掉，于是该类型的剪影就永久缺一块。这里向四周一圈圈找最近的、
-// 没有建筑/没有物体、且坡度类型相同的格子。
+// 鎹曡幏鍓奖鐨勬柟寮忔槸銆屾妸鍗曚綅鐢诲湪涓栫晫鍧愭爣涓娿€嶏紝鎵€浠ラ偅涓潗鏍囧繀椤绘病鏈夌墿浣擄細濡傛灉閭ｉ噷鏈夋爲鎴?
+// 寤虹瓚锛屼細琚摠鍏靛～鍏呮姽鎺夛紝浜庢槸璇ョ被鍨嬬殑鍓奖灏辨案涔呯己涓€鍧椼€傝繖閲屽悜鍥涘懆涓€鍦堝湀鎵炬渶杩戠殑銆?
+// 娌℃湁寤虹瓚/娌℃湁鐗╀綋銆佷笖鍧″害绫诲瀷鐩稿悓鐨勬牸瀛愩€?
 static CoordStruct PickCapturePos(const CoordStruct& destination)
 {
 	CellStruct cell = CellClass::Coord2Cell(destination);
@@ -1751,13 +1751,13 @@ static CoordStruct PickCapturePos(const CoordStruct& destination)
 }
 
 
-// 借引擎自己的绘制代码捕获一个剪影：
-//   * 先用哨兵色填满捕获框，并记下像素与 Z 缓冲；
-//   * 临时搬动单位、锁住目的地坡度、锁住朝向；
-//   * 画它（体素走 UnitClass::DrawAsVXL，SHP 单位走它自己的 Draw）；
-//   * 与哨兵色不同的像素就是剪影；第二趟开阴影再跑一次，多出来的就是影子行；
-//   * 还原像素、Z 缓冲和单位状态，再让引擎把这块区域标脏重画。
-// 两条血泪规则：借画不能裁剪成捕获框（那样引擎一个像素都不画），还原边界必须是半开区间。
+// 鍊熷紩鎿庤嚜宸辩殑缁樺埗浠ｇ爜鎹曡幏涓€涓壀褰憋細
+//   * 鍏堢敤鍝ㄥ叺鑹插～婊℃崟鑾锋锛屽苟璁颁笅鍍忕礌涓?Z 缂撳啿锛?
+//   * 涓存椂鎼姩鍗曚綅銆侀攣浣忕洰鐨勫湴鍧″害銆侀攣浣忔湞鍚戯紱
+//   * 鐢诲畠锛堜綋绱犺蛋 UnitClass::DrawAsVXL锛孲HP 鍗曚綅璧板畠鑷繁鐨?Draw锛夛紱
+//   * 涓庡摠鍏佃壊涓嶅悓鐨勫儚绱犲氨鏄壀褰憋紱绗簩瓒熷紑闃村奖鍐嶈窇涓€娆★紝澶氬嚭鏉ョ殑灏辨槸褰卞瓙琛岋紱
+//   * 杩樺師鍍忕礌銆乑 缂撳啿鍜屽崟浣嶇姸鎬侊紝鍐嶈寮曟搸鎶婅繖鍧楀尯鍩熸爣鑴忛噸鐢汇€?
+// 涓ゆ潯琛€娉鍒欙細鍊熺敾涓嶈兘瑁佸壀鎴愭崟鑾锋锛堥偅鏍峰紩鎿庝竴涓儚绱犻兘涓嶇敾锛夛紝杩樺師杈圭晫蹇呴』鏄崐寮€鍖洪棿銆?
 bool FormationController::CaptureUnitGhostRaw(TechnoClass* pUnit, const CoordStruct& worldPos,
 DirStruct facing, int clipWidth, int clipHeight, GhostPatch& patch){
 if (!pUnit || !TacticalClass::Instance)
@@ -2218,7 +2218,7 @@ hasShadow = true;
 		&& (MapClass::Instance->TryGetCellAt(worldPos)->LandType == LandType::Water);
 	if (waterCapture)
 	{
-		// 水面格捕获到的影子行不可信：直接丢弃，影子改由下方合成的椭圆表现。
+		// 姘撮潰鏍兼崟鑾峰埌鐨勫奖瀛愯涓嶅彲淇★細鐩存帴涓㈠純锛屽奖瀛愭敼鐢变笅鏂瑰悎鎴愮殑妞渾琛ㄧ幇銆?
 		for (int cell = 0; cell < kGhostWidth * kGhostHeight; ++cell)
 		{
 			if (patch.Mask[cell] && !patch.BodyMask[cell])
@@ -2228,8 +2228,8 @@ hasShadow = true;
 	}
 	if (AirHeightFor(pUnit) > 0)
 	{
-		// 飞行单位不画任何捕获到的影子：那些像素是飞行高度投影，不是地面阴影。
-		// 全部丢弃，影子统一由 DrawPreview 里的合成椭圆表现。
+		// 椋炶鍗曚綅涓嶇敾浠讳綍鎹曡幏鍒扮殑褰卞瓙锛氶偅浜涘儚绱犳槸椋炶楂樺害鎶曞奖锛屼笉鏄湴闈㈤槾褰便€?
+		// 鍏ㄩ儴涓㈠純锛屽奖瀛愮粺涓€鐢?DrawPreview 閲岀殑鍚堟垚妞渾琛ㄧ幇銆?
 		for (int cell = 0; cell < kGhostWidth * kGhostHeight; ++cell)
 		{
 			if (patch.Mask[cell] && !patch.BodyMask[cell])
@@ -2312,9 +2312,9 @@ return &cache[index];
 }
 return nullptr;
 }
-// 在渲染之前补剪影缓存：每帧最多 kCapturesPerFrame 个新形状，按（类型、朝向档、坡度）
-// 作键，所以只是转队列时只有真正不同的形状才重捕。本帧和上一帧用过的条目永不被淘汰；
-// 连续失败会暂停一段时间——捕获不出来还每帧重试，只会卡顿且什么都看不到。
+// 鍦ㄦ覆鏌撲箣鍓嶈ˉ鍓奖缂撳瓨锛氭瘡甯ф渶澶?kCapturesPerFrame 涓柊褰㈢姸锛屾寜锛堢被鍨嬨€佹湞鍚戞。銆佸潯搴︼級
+// 浣滈敭锛屾墍浠ュ彧鏄浆闃熷垪鏃跺彧鏈夌湡姝ｄ笉鍚岀殑褰㈢姸鎵嶉噸鎹曘€傛湰甯у拰涓婁竴甯х敤杩囩殑鏉＄洰姘镐笉琚窐姹帮紱
+// 杩炵画澶辫触浼氭殏鍋滀竴娈垫椂闂粹€斺€旀崟鑾蜂笉鍑烘潵杩樻瘡甯ч噸璇曪紝鍙細鍗￠】涓斾粈涔堥兘鐪嬩笉鍒般€?
 void FormationController::PrepareGhosts(){
 if (state_ != State::Dragging && suppressFrames_ == 0)
 return;
@@ -2444,6 +2444,12 @@ void FormationController::BlitGhostPatch(Surface* pSurface, const GhostPatch& pa
 int top, DWORD tint, DWORD edgeTint, int opacity, int layers, int clipWidth, int clipHeight){
 if (!pSurface || opacity <= 0)
 return;
+	// 让引擎下一帧重绘这块地面，否则上一帧的混合结果会被当成背景，多帧叠加就把地表盖住了。
+	if (TacticalClass::Instance)
+	{
+		RectangleStruct dirty = { left, top, kGhostWidth, kGhostHeight };
+		TacticalClass::Instance->RegisterDirtyArea(dirty, true);
+	}
 Point2D pixel = {
  0, 0 }
 ;
@@ -2485,7 +2491,7 @@ edge = !patch.BodyMask[cell - 1] || !patch.BodyMask[cell + 1]
 			// Same weight as the body: boosting the outline made every setting look solid, which
 			// is exactly the "GhostOpacity does nothing" report.
 			const DWORD under = pSurface->GetPixel(&pixel);
-			// 描边恒定不透明；GhostOpacity=4（opacity 8）表示“完全实体”，此时按需求不画描边。
+			// 鎻忚竟鎭掑畾涓嶉€忔槑锛汫hostOpacity=4锛坥pacity 8锛夎〃绀衡€滃畬鍏ㄥ疄浣撯€濓紝姝ゆ椂鎸夐渶姹備笉鐢绘弿杈广€?
 			// The outline keeps the configured colour at full strength; only the body follows
 			// GhostOpacity. Dimming the outline by terrain brightness made every edge colour
 			// look washed out, which is exactly the "edge colour is gone" report.
