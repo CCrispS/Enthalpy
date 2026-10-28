@@ -1,9 +1,3 @@
-## 2026-10-28 · GhostOpacity 改为纯线性 alpha
-
-- 剪影本体不再按地形亮度预乘色值（旧实现 BlendGhost565 会把绿色压向背景，导致 1/2/3 档几乎看不出差别），改为直接 Blend565(under, colour, opacity)，0/1/2/3/4 即 0/25/50/75/100 %。
-- 描边保持 100 % 不跟随透明度。
-- 影子仍用 BlendGhost565（需要按亮度压暗）。
-
 ## 2026-10-28 · 描边跟随 GhostOpacity 梯度
 
 - `src\Formation.cpp` `BlitGhostPatch()`：描边分支原来固定用 `Blend565(under, edgePixel, 8)`，即**始终 100% 不透明**；`edgeOpacity` 变量算出来却没用上。于是 `GhostOpacity` 调低时本体变淡、轮廓仍是实心，整体看起来像“透明度只生效了一半”。
