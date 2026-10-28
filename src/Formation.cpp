@@ -1591,6 +1591,8 @@ else
 ++gDrawCalls; ScopedMs perfDraw(&gDrawMs); BlitGhostPatch(pSurface, pCached->Patch, screen.X - pCached->Patch.FootX,
 screen.Y - pCached->Patch.FootY, ghostTint, ghostEdge, opacity, shadowOn ? 3 : 1,
 surfaceWidth, surfaceHeight);
+			if (shadowOn && pCached->Patch.WaterPatch)
+				DrawGroundShadow(pSurface, screen, 24, 10, opacity, surfaceWidth, surfaceHeight);
 }
 }
 continue;
@@ -2205,6 +2207,18 @@ hasShadow = true;
 // Aircraft and jumpjets are captured while hovering, so whatever shadow pixels the artwork
 // yields are projections of the flight altitude, not of the ground cell.  They are dropped
 // and the ground ellipse is stamped instead, which is complete by construction.
+	const bool waterCapture = (MapClass::Instance != nullptr) && (MapClass::Instance->TryGetCellAt(worldPos) != nullptr)
+		&& (MapClass::Instance->TryGetCellAt(worldPos)->LandType == LandType::Water);
+	if (waterCapture)
+	{
+		// 水面格捕获到的影子行不可信：直接丢弃，影子改由下方合成的椭圆表现。
+		for (int cell = 0; cell < kGhostWidth * kGhostHeight; ++cell)
+		{
+			if (patch.Mask[cell] && !patch.BodyMask[cell])
+				patch.Mask[cell] = 0;
+		}
+		hasShadow = false;
+	}
 if (AirHeightFor(pUnit) > 0)
 {
 for (int cell = 0; cell < kGhostWidth * kGhostHeight; ++cell)
@@ -2215,6 +2229,7 @@ patch.BodyMask[cell] = 1;
 hasShadow = false;
 }
 patch.HasShadow = hasShadow;
+	patch.WaterPatch = waterCapture;
 }
 patch.MaskWidth = maxX - minX + 1;
 patch.MaskHeight = maxY - minY + 1;

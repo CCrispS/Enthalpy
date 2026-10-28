@@ -122,6 +122,7 @@ int AirHeight;  // 距地高度（lepton），0 表示剪影贴地
 // 美术本身是否画了影子（Mask 里不在 BodyMask 的像素）；飞机与
 // 体素通常没有，所以地面影子要自己补。
 		bool HasShadow;
+	bool WaterPatch = false;   // 该补丁是在水面格上捕获的：影子不可信，改用合成椭圆
 int Top;   // 原始像素捕获时的表面偏移
 		int Left;
 // 单位「脚点」在补丁内的位置（相对补丁左上角）——它就是借画时
