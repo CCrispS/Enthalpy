@@ -1,5 +1,14 @@
 # 参与开发
 
+## 协作方式：全部走 PR
+
+`main` 是发布分支，**不接受直接推送**。任何改动（功能、修复、文档、构建脚本）都按下面流程走：
+
+1. 从最新 `main` 拉分支：`feat/…`、`fix/…`、`docs/…`、`refactor/…`、`chore/…`；
+2. 本地改完，`Release` 与 `Debug` 都编译通过；
+3. 更新 `docs\CHANGELOG.md`（以及 `docs\CONFIGURATION.md` / `README.md` 里对应的配置键）；
+4. 推分支并发起 PR，按 PR 模板勾选检查项；
+5. 合并后再谈发布——发布流程见 [`docs\RELEASING.md`](docs/RELEASING.md)，每个 Release 同时包含源码（GitHub 自动生成）与编译产物 zip。
 ## 环境
 
 - Windows 10/11，Visual Studio 2026（Workload：使用 C++ 的桌面开发，含 x86 工具集）
