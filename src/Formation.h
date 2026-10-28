@@ -1,9 +1,3 @@
-// Enthalpy: the plugin's whole state. Read the constants first, then the SlotPlan (one unit's
-// target), GhostPatch (a cached silhouette mask), GhostCacheEntry (its key) and the controller
-// itself, whose methods are documented in Formation.cpp.
-//
-// Units of a formation are kept in units_[index] and their targets in slots_[index]; the arrays
-// are parallel, so index is the identity of a unit for the whole gesture.
 #pragma once
 
 #include <YRPP.h>
@@ -13,29 +7,29 @@
 #include <Surface.h>
 #include <GeneralStructures.h>
 
-// RA3-style formation ordering for Yuri's Revenge.
+// 尤里的复仇「红警3 式列队」插件。
 //
-// Gesture: with units selected, press the left and right mouse buttons together at the
-// destination, then drag.  A translucent ghost formation follows the drag; releasing the
-// right button hands the formation to the units, which drive to their assigned cells and
-// then turn to face away from the drop point.
+// 操作方式：选中单位后，在目的地按下鼠标中键，
+// 拖动决定阵型朝向；半透明剪影随之跟随，松开中键后
+// 单位驶向各自分配的格子，然后转到「背对落点」的朝向。
+// （朝向由阵型方向决定，见 ComputeLayout。）
 class FormationController
 {
 public:
 	static FormationController& Instance();
 
-	// Called once per tactical frame, before the frame is drawn.
+// 每个战术帧调一次，在渲染之前——捕获必须在这里做，否则会画进玩家看到的帧。
 	void Update();
 
-	// Called late in the frame, after the world has been drawn.
+// 世界绘制之后调用：只负责把缓存里的剪影贴上去。
 	void DrawPreview();
 
-	// True while the gesture owns the mouse, so the engine's own click handling can be
-	// told to stand down.
+// 手势过程中返回真，让引擎的点击处理让路；
+// 否则松开左键会被当成一次普通移动命令。
 	bool ShouldSuppressClick();
 
-	// Turns the whole plugin off after a failed self check (wrong game build, missing hook),
-	// so a user with an unsupported setup gets a log line instead of a crash.
+// 自检失败（游戏版本不符、hook 站点异常）时整体停用插件：
+// 让不兼容的玩家只看到一行日志，而不是弹窗崩溃。
 	void Disable(const char* reason);
 
 	static bool BothMouseButtonsDown();	static bool RightButtonDown();
@@ -56,30 +50,30 @@ private:
 		Cooldown
 	};
 
-	// One planned destination: the cell a unit is assigned to, plus the per-unit offset
-	// used when several infantry share a cell.
+// 一个格位计划：分配给某单位的格子，以及格内偏移
+// （多个步兵共用一格时用）。
 	struct SlotPlan
 	{
 		int CellX;
 		int CellY;
 		int OffsetX;
 		int OffsetY;
-		bool Snapped;   // the ideal cell was unusable, so this is the nearest legal one
-		bool StartCell; // the cell is only occupied by units that are about to leave
-		bool Occupied;  // some unit stands there right now
+bool Snapped;   // 理想格不可用，这是就近吸附到的合法格（预览标红）
+bool StartCell; // 该格只站着「即将离开」的单位，预览用橘黄而非红色
+bool Occupied;  // 当前有单位站在这里
 
-		// Aircraft and jumpjet units never park on the ground, so their ghost is drawn at the
-		// altitude they hover at, with a vertical guide line down to the target cell.
-		int AirHeight;  // leptons above the cell; 0 means the ghost sits on the ground
+// 飞机与跳跳车不落地，剪影画在悬停高度，
+// 并从剪影垂直向下画一条引线到目标格。
+int AirHeight;  // 距地高度（lepton），0 表示剪影贴地
 
-		// Optional unit artwork for the ghost: the unit's own SHP frame, drawn translucent
-		// so the preview reads as the unit itself rather than a bare footprint.
+// 可选的单位自带图像：该单位的 SHP 帧，以半透明绘制，
+// 让预览看起来像单位本身而不是一块脚印。
 		SHPStruct* Image;
 		int Frame;
 	};
 
-	// A cell already handed out during layout, so two units never claim the same square
-	// (infantry excepted, up to three per cell).
+// 布局时已分配的格子，保证两个单位不会抢同一格
+// （步兵例外，一格最多三人）。
 	struct CellClaim
 	{
 		int CellX;
@@ -88,7 +82,7 @@ private:
 		bool UsedByVehicle;
 	};
 
-	// A unit that still has to be turned towards the formation facing after it arrives.
+// 到位后还需要转向的单位记录。
 	struct PendingFacing
 	{
 		TechnoClass* Unit;
@@ -97,19 +91,19 @@ private:
 		DirStruct Facing;
 		int FramesLeft;
 		bool Applied;
-	// True once the unit was actually seen driving towards the slot.
+// 确认它确实开始朝格位行驶过（Used 防止刚下单时被误判为「没动」）。
 	bool SeenMoving;
-	// Consecutive frames the locomotor reported no movement; filters its one-tick gaps.
+// 连续「静止」帧数，用来滤掉移动模拟器的单帧抖动。
 	int StillFrames;
 		int TurnAttempts;
 	};
 
-	// The pixels one unit's own artwork paints, captured once per (unit type, facing) and
-	// reused for every slot of that pair: drawing each ghost through the engine individually
-	// is both slow and the reason a unit could end up without a ghost at all.
+// 一张剪影掩码：按（单位类型、朝向）捕获一次，
+// 之后所有同类型同朝向的格位复用。逐个格位实时绘制既慢，
+// 也是早期「某些单位干脆没有剪影」的原因。
 	//
-	// Wide enough for the broadest side-on vehicle silhouette; the engine draws a tank
-	// noticeably wider than one cell, and a box that clips it produced half a ghost.
+// 宽度要容得下最宽的侧向载具剪影：引擎画的坦克明显比一格宽，
+// 捕获框太小就会只拿到半个剪影。
 	static constexpr int kGhostWidth = 192;
 	static constexpr int kGhostHeight = 256;
 	static constexpr int kGhostHalfWidth = 96;
@@ -118,47 +112,47 @@ private:
 	struct GhostPatch
 	{
 		TechnoTypeClass* Type;
-		// Only the silhouette is kept: a voxel drawn outside the normal render pass comes out
-		// of the engine as solid black, so the painted colours carry no information.
+// 只保留轮廓：体素在正常渲染流程之外被绘制时会变成纯黑，
+// 所以颜色没有信息量，只有掩码有用。
 		unsigned char Mask[kGhostWidth * kGhostHeight];
-		// The same silhouette captured with the unit type's shadow switched off.  Pixels that
-		// only exist in Mask are the shadow the artwork paints; they are drawn darker than the
-		// body, or left out entirely when GhostShadow is off.
+// 关掉该单位阴影后捕获的同一剪影；只在 Mask 里出现的像素
+// 就是美术自带的影子，绘制时加深；GhostShadow=no 时直接不画。
+// （同上：影子行的处理策略。）
 		unsigned char BodyMask[kGhostWidth * kGhostHeight];
-		// True when the artwork itself paints a shadow (mask pixels outside BodyMask).  Aircraft
-		// and voxel art usually have none, so the ground shadow has to be synthesised.
+// 美术本身是否画了影子（Mask 里不在 BodyMask 的像素）；飞机与
+// 体素通常没有，所以地面影子要自己补。
 		bool HasShadow;
-		int Top;   // surface offset the raw pixels were captured at
+int Top;   // 原始像素捕获时的表面偏移
 		int Left;
-		// Where the unit's feet sit inside the patch, measured from its top-left corner.  This
-		// is the fixed point the borrowed unit was painted at, so the ghost stays put while the
-		// block rotates instead of sliding with the artwork's bounding box.
+// 单位「脚点」在补丁内的位置（相对补丁左上角）——它就是借画时
+// 单位被画上去的那个点，因此块状阵型旋转时剪影原地转，
+// 而不是跟着美术包围盒滑动。
 		int FootX;
 		int FootY;
-		int MaskHeight;   // height of the painted silhouette
-		int MaskWidth;    // width of the painted silhouette
+int MaskHeight;   // 剪影实际高度
+int MaskWidth;    // 剪影实际宽度
 	};
 
-	// One captured ghost per (unit type, facing) pair.  Capturing costs an engine draw plus a
-	// full scan of the patch, so it happens once and is then reused for the rest of the
-	// session; reuse is also what keeps an infantry ghost frozen in one pose mid-drag.
+// 缓存条目：每个（类型、朝向）一份。捕获要花一次引擎绘制和一次全框扫描，
+// 所以只做一次，之后整个会话复用；复用也保证了拖动中
+// 步兵剪影保持同一个姿势而不是每帧换动作。
 	struct GhostCacheEntry
 	{
 		TechnoTypeClass* Type;
-		unsigned short Facing;   // DirStruct value, quantised to 32 directions
-		// Zero for flat ground, where a silhouette is the same wherever it is pasted.  A ramp
-		// tilts the unit by the slope of its own cell, so ramp destinations are keyed by cell
-		// and re-captured when the facing changes.
+unsigned short Facing;   // DirStruct 值，量化到 32 个方向
+// 平地为 0：平地上剪影贴在哪都一样。斜坡会按「单位所在格的坡度」倾斜，
+// 所以斜坡目标格要按格坐标单独作键，朝向变了还要重捕。
+// （同上：斜坡缓存键。）
 		int CellKey;
-		int LastUse;             // frame id of the last blit, for eviction
+int LastUse;             // 最近一次被使用的帧号，用于淘汰
 		GhostPatch Patch;
 	};
 
 	static constexpr int kGhostCacheSize = 48;
 
-	// A cursor wobbling on a bucket boundary must not flip the block's facing every frame:
-	// every flip would re-capture the silhouette and read as flicker.
-	static constexpr int kFacingDeadband = 1638;   // ~9 degrees, in 1/65536 turn units
+// 光标在朝向档边界轻轻抖动时，不能让阵型每帧翻转：
+// 每次翻转都会重捕剪影，看起来就是闪烁。
+static constexpr int kFacingDeadband = 1638;   // 约 9 度（1/65536 圈为单位）
 
 	bool CellOnlyHoldsMovers(CellClass* pCell) const;
 
@@ -172,9 +166,9 @@ private:
 	void ServicePendingFacings();
 
 
-	// Captures one unit's artwork into a patch (drawing it through the engine once), and
-	// blits an already captured patch onto the surface at a screen position.
-	// The raw draw-and-diff below runs engine code on a borrowed object, so it is wrapped in a
+// 把某个单位的美术捕获成补丁（借引擎画一次），
+// 以及把已捕获的补丁贴到表面某个屏幕位置。
+// 下面的借画-差集流程会在借来的对象上跑引擎代码，因此外面包了 SEH，
 	// SEH guard: a fault there must cost one ghost frame, never the whole game.
 	bool CaptureUnitGhostRaw(TechnoClass* pUnit, const CoordStruct& worldPos, DirStruct facing,
 		int clipWidth, int clipHeight, GhostPatch& patch);

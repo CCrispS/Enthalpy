@@ -1,6 +1,3 @@
-// Enthalpy: logging. The file is opened shared for writing so it can be read while the game runs,
-// goes next to the DLL (or %LOCALAPPDATA%\Enthalpy when the game folder is read-only), and is
-// disabled completely by Enthalpydebug=no - no file is created at all in that case.
 #include "Log.h"
 
 #include "Settings.h"

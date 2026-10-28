@@ -1,6 +1,3 @@
-// Enthalpy: parsing Enthalpy.ini. One file, one section, no fallbacks - a key that is missing
-// simply keeps its compiled default, which is what makes "why is this setting ignored"
-// answerable (the settings: line in the log names the file that was read).
 #include "Settings.h"
 
 #include <Windows.h>

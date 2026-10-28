@@ -1,7 +1,3 @@
-// Enthalpy: load-time self check. A user's install may run a different gamemd.exe build than the
-// one the hook addresses were taken from, and a hook into the wrong offset is a crash, not a
-// warning. This reads the PE header, compares the image size and reports the hook sites it
-// verified, so the log says what was checked instead of failing silently.
 #pragma once
 
 #include <Windows.h>

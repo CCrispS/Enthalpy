@@ -1,20 +1,17 @@
-// Enthalpy - RA3-style formation orders for Yuri's Revenge, as a standalone Syringe plugin.
+// Enthalpy —— 尤里的复仇「红色警戒3 式列队」独立 Syringe 插件。
 //
-// Pipeline, in the order it runs every frame:
-//   1. Update()           - reads the mouse, runs the gesture state machine, keeps arrived units
-//                           on their cells and drives the arrival facing.
-//   2. ComputeLayout()    - turns the cursor into one target cell per unit (obstacles, claims,
-//                           infantry sub-slots, air height).
-//   3. PrepareGhosts()    - fills the silhouette cache before the frame is drawn.
-//   4. DrawPreview()      - blits cached silhouettes; it never captures anything itself.
-//   5. CommitOrders()     - on release, orders every unit to its cell and arms the keeper.
+// 每帧的执行顺序：
+//   1. Update()        读鼠标、跑手势状态机、把已到位的单位钉在格子里、驱动最终朝向；
+//   2. ComputeLayout() 把光标算成「每个单位一个目标格」（障碍、占位、步兵子格、飞行高度）；
+//   3. PrepareGhosts() 在帧渲染之前把剪影缓存填好；
+//   4. DrawPreview()   只贴缓存，绝不在渲染过程中捕获；
+//   5. CommitOrders()  松手时下单，并给 keeper（保管者）上膛。
 //
-// Silhouettes are not drawn by hand. CaptureUnitGhostRaw borrows a real engine draw of the unit
-// onto the tactical surface, diffs the result against a sentinel colour and stores two byte masks
-// that DrawPreview blends later - which is why the capture code looks so unusual.
+// 剪影不是手画的：CaptureUnitGhostRaw 借引擎自己画一遍单位到战术表面，
+// 用哨兵色做差集得到两张位掩码，之后由 DrawPreview 混合上屏——所以捕获代码看着很奇怪。
 //
-// This file was rebuilt mechanically once after an editing accident and lost most of its
-// comments; the ones below were re-added by hand and describe intent, not just mechanics.
+// 本文件曾因一次编辑事故被机械重建，注释全部丢失；以下注释是事后按原意补写的，
+// 讲的是「为什么这么做」，不只是「做了什么」。
 
 #include "Formation.h"
 #include "Log.h"
@@ -204,8 +201,8 @@ result.X += offsetX;
 result.Y += offsetY;
 return result;
 }
-// World position of a cell centre including terrain height and bridge deck (GetCoordsWithBridge),
-// so a silhouette on a ramp sits on the ramp instead of on the flat ground below it.
+// 取格子中心的世界坐标，含地形层高与桥面高度（GetCoordsWithBridge），
+// 这样斜坡上的剪影贴着坡面，而不是贴在坡下的平地。
 bool CellWorldPos(int cellX, int cellY, int offsetX, int offsetY, CoordStruct& out)
 {
 if (!MapClass::Instance)
@@ -221,11 +218,11 @@ out.X += offsetX;
 out.Y += offsetY;
 return true;
 }
-// Decides whether a cell may hold this unit. Two independent questions:
-//   * can the unit be there at all - water vs land follows the unit's SpeedType, not the map
-//     legend, so ships are refused on grass and tanks on water;
-//   * is the square already blocked - only buildings and terrain objects (trees, rocks) count,
-//     because units standing there will be ordered away by the formation itself.
+// 判断这个格子能不能站这个单位，两件独立的事：
+//   * 单位本身能不能在那——水/陆按单位的 SpeedType 判，不按地形图例，所以船不会上草地、
+//     坦克不会下水；
+//   * 格子是不是被挡住——只有建筑和地形对象（树、石）算障碍，站在那儿的单位不算，
+//     因为列队本身会把它们调走。
 bool IsUsableCell(CellClass* pCell, TechnoClass* pUnit)
 {
 	if (!pCell)
@@ -300,8 +297,8 @@ bool FormationController::RightButtonDown(){
 bool FormationController::MiddleButtonDown(){
 	return (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
 }
-// The game window is found through Win32 instead of WWMouseClass: the engine's mouse object in
-// this build does not match the header layout, and writing through it corrupted the stack.
+// 用 Win32 找游戏窗口，而不是 WWMouseClass：这个 build 里引擎的鼠标对象与头文件布局
+// 不一致，按头文件写会踩坏栈（早期就是这么崩的）。
 HWND FormationController::GameWindow(){
 static HWND hwnd = nullptr;
 if (hwnd && IsWindow(hwnd))
@@ -344,10 +341,9 @@ out.X = point.x;
 out.Y = point.y;
 return true;
 }
-// Cursor to world. The engine's ClientToCoords only solves the flat ground plane, so the first
-// answer is lifted to its cell's height and the projection is corrected iteratively; the
-// result with the smallest residual wins. A one-cell hysteresis keeps the layout from
-// jittering while the cursor rests on a cell border.
+// 光标转世界坐标。引擎的 ClientToCoords 只解算平面，所以先把结果抬到所在格的高度，
+// 再反投影回屏幕用残差修正，迭代几轮取残差最小的那次。另外做了一格的迟滞，
+// 避免光标压在格子边界上时布局来回抖。
 bool FormationController::CursorWorldPos(CoordStruct& out){
 if (!TacticalClass::Instance)
 return false;
@@ -398,9 +394,8 @@ return false;
 out = best;
 return true;
 }
-// ENGINE ABI: this build's ClientToCoords takes the destination CoordStruct first and the
-// client point second - the reverse of the YRpp declaration. Both arguments are passed as the
-// opposite pointer type on purpose; do not 'fix' this.
+// 引擎 ABI：这个 build 的 ClientToCoords 是「目标 CoordStruct 在前、屏幕点在后」，
+// 与 YRpp 的声明正好相反。这里故意用相反的指针类型互转，请不要「顺手修正」。
 void FormationController::ClientToWorld(const Point2D& client, CoordStruct& world){
 if (!TacticalClass::Instance)
 return;
@@ -442,8 +437,8 @@ return true;
 }
 return false;
 }
-// Selection snapshot: a gesture keeps working on the units selected when it started, even if
-// the engine drops the selection afterwards.
+// 选择快照：一次手势从头到尾都作用在「按下时选中的那批单位」上，
+// 即使中途引擎把选择清掉了也照样工作。
 void FormationController::GatherSelectedUnits(){
 unitCount_ = CollectSelected(units_, kMaxUnits);
 for (int i = 1; i < unitCount_; ++i)
@@ -547,8 +542,7 @@ return true;
 static constexpr int kAirThreshold = 96;
 
 
-// Flight height for airborne units: aircraft use the rules' FlightLevel, jumpjets are detected
-// by their altitude above the cell they hover over.
+// 飞行单位的显示高度：飞机取 Rules 的 FlightLevel，跳跳车按它悬停格上方的高度差判断。
 static int AirHeightFor(TechnoClass* pUnit)
 {
 	if (!pUnit)
@@ -572,10 +566,9 @@ static int AirHeightFor(TechnoClass* pUnit)
 // target cell.  Voxel art carries no shadow pixels of its own, in which case a soft ellipse
 // is stamped under the cell instead.
 static void DrawGroundShadow(Surface* pSurface, const Point2D& centre, int width, int height,
-// Blends a cached silhouette onto the surface. opacity is in eighths (GhostOpacity 0..4 maps
-// to 0..8), the outline uses the same weight so every setting is visibly different, and
-// layers selects the body (bit 0) and/or the shadow (bit 1) - aircraft paint the body at
-// their flight height and the shadow on the ground, hence the split.
+// 把缓存里的剪影混合到表面。opacity 以「八分之一」为单位（GhostOpacity 0..4 映射到 0..8），
+// 描边用同样权重，这样每一档都看得出差别。layers 是位掩码：bit0 画本体、bit1 画影子——
+// 飞行单位本体画在飞行高度、影子画在地面，所以要分两次贴。
 	int opacity, int clipWidth, int clipHeight)
 {
 	if (!pSurface || opacity <= 0)
@@ -607,11 +600,10 @@ static void DrawGroundShadow(Surface* pSurface, const Point2D& centre, int width
 		}
 	}
 }
-// Builds one plan per selected unit for the current cursor position. Order of work matters:
-// the anchor cell is the ideal cell for the first unit, obstacles may force a ring search, a
-// cell already claimed by an earlier slot only shifts that slot (it does not turn red - red
-// means the ground itself blocks it), infantry share a cell three deep using the engine's own
-// FindInfantrySubposition, and airborne units get a flight height plus a ground shadow cell.
+// 按当前光标位置，为每个选中单位算一个目标格。顺序很重要：
+// 锚点所在的格是第一个单位的理想格；有障碍时环形搜索最近的合法格；被同队其它格位先占的
+// 格子只是把当前格位顺移（不会标红——红表示地面本身不可用）；步兵一格三人，格内位置直接
+// 问引擎的 FindInfantrySubposition；飞行单位额外得到飞行高度和地面影子格。
 void FormationController::ComputeLayout(){
 CoordStruct candidate = {
  0, 0, 0 }
@@ -907,11 +899,10 @@ lastCellY = firstCellY;
 }
 }}
 
-// Issues the orders. SetDestination alone is not enough: the engine keeps the previous mission
-// queued, so a leftover Move from an earlier gesture could fire later. ForceMission makes the
-// new order the current one. It also arms the keeper (trackFrames_, wasHome_, permanent_), the
-// thing that stops arrived units from wandering, and the facing records read by
-// ServicePendingFacings.
+// 真正下单。只 SetDestination 不够：引擎会把上一条 mission 留在队列里，上一次手势残留的
+// Move 可能在这次任务结束后才执行，看起来就像「单位自己又跑回去了」。所以必须 ForceMission
+// 让新命令立刻成为当前任务。这里同时给 keeper 上膛（trackFrames_、wasHome_、permanent_），
+// 并准备 ServicePendingFacings 要用的朝向记录。
 void FormationController::CommitOrders(){
 	permanentCount_ = 0;
 	releaseGuard_ = 90;
@@ -973,11 +964,11 @@ Logf("formation: commit %d/%d orders (columns=%d ranks=%d spacingCells=%d anchor
 issued, unitCount_, columns_, ranks_, spacingCells_, anchor_.X, anchor_.Y,
 static_cast<int>(facingDir_.value()));
 }
-// Turns every arrived unit to the facing its silhouette showed, then takes it out of all moving
-// missions (Stop). Guard, Area Guard and Move each carry a destination - the cell the unit was
-// ordered from - so the engine walks the unit back to it; Stop carries none.
-// The turn is requested per frame so the engine rotates at the unit's own ROT, but only until
-// the facing is reached: re-arming it makes the unit spin in place forever.
+// 让每个已到位的单位转到剪影显示的朝向，然后把它从所有「带着目的地」的任务里摘出来（Stop）。
+// Guard / Area Guard / Move 都带着一个目的地——也就是它的出发点——引擎于是会把它走回去；
+// Stop 不带目的地，所以不会再动。
+// 转向按帧请求，引擎才会按单位自身的转向速度平滑转；但一旦到位就停止请求，
+// 否则每帧重新请求会让单位原地打转。
 void FormationController::ServicePendingFacings(){
 	int alive = 0;
 	for (int index = 0; index < pendingCount_; ++index)
@@ -1093,8 +1084,7 @@ void FormationController::ServicePendingFacings(){
 	}
 	pendingCount_ = alive;
 }
-// Fail-safe: any unrecoverable condition turns the plugin off for the session instead of
-// leaving a half-working gesture in the player's way.
+// 兜底：出现无法恢复的异常就把插件整体停掉，而不是留一个半残的手势干扰玩家。
 void FormationController::Disable(const char* reason)
 {
 if (disabled_)
@@ -1104,11 +1094,11 @@ disabled_ = true;
 Logf("formation: disabled - %s", reason ? reason : "unspecified");
 }
 
-// Gesture state machine plus the keeper.
-//   Idle      - middle button released; watching for a fresh press with a selection.
-//   Dragging  - middle button held; recompute the layout, DrawPreview draws the result.
-//   Cooldown  - after release; swallows the click that the release itself generates.
-// The keeper never restarts a march: it only pins units that already stand in their cell.
+// 手势状态机 + keeper（保管者）。三个状态：
+//   Idle      中键松开，等一次新的按下（且要有选中单位）；
+//   Dragging  中键按住，持续重算布局，DrawPreview 负责画；
+//   Cooldown  松手之后，用来吞掉这次松开本身产生的那一下点击。
+// 下面的 keeper 绝不重新发起行军：它只钉住「已经站在自己格子里」的单位。
 void FormationController::Update(){
 if (disabled_)
 return;
@@ -1398,9 +1388,8 @@ leftWasDown_ = leftDown;
 rightWasDown_ = rightDown;
 middleWasDown_ = middleDown;
 }
-// True while the engine must not turn a click into an order. Without this the left-button
-// release inside a gesture orders a plain move to the cursor. Deliberately narrow: a plain
-// right click must still deselect.
+// 返回真时，引擎不许把这次点击变成命令。没有它，手势过程中松开左键就会让选中单位
+// 朝光标位置跑过去，整个手势就废了。这里故意写得很窄：单纯的右键仍然要能取消选择。
 bool FormationController::ShouldSuppressClick(){
 	// Suppress only while a formation gesture is (or may be) under way: the right button
 	// must be held AND the left button must have been down at some point during that hold.
@@ -1433,9 +1422,9 @@ bool FormationController::ShouldSuppressClick(){
 	return suppress;
 }
 
-// Draws the preview from the cache only. Capturing here would paint borrowed units into the
-// frame being rendered; captures happen earlier, in Update(), where the world is redrawn over
-// them. One pass per frame is enforced because blending twice doubles the opacity.
+// 只用缓存画预览。不能在这里捕获——那会把「借来的单位」画进正在渲染的这一帧；
+// 捕获放在更早的 Update() 里，那一帧的世界绘制会把痕迹覆盖掉。
+// 每帧只允许一遍：混合两遍等于把透明度翻倍，ini 调了也看不出效果。
 void FormationController::DrawPreview(){
 if (disabled_)
 return;
@@ -1636,8 +1625,8 @@ opacity, 0, 0, surfaceWidth - 1, surfaceHeight - 1);
 // An occluder on the capture spot eats pixels out of the middle of a silhouette, leaving an
 // enclosed hole.  Anything the mask does not cover that cannot reach the border is such a
 // hole; filling it keeps the ghost complete no matter what was drawn there first.
-// Seals holes that an occluder left inside the silhouette: a flood fill from the border marks
-// every outside pixel, so any mask pixel not reached is enclosed and gets promoted to body.
+// 把遮挡在剪影内部留下的洞补上：从边界做泛洪，能到达的是外部，
+// 剩下没被访问到的掩码像素就是被包住的洞，直接并入本体。
 static void FillEnclosedHoles(unsigned char* mask)
 {
 	const int w = 192;
@@ -1674,9 +1663,8 @@ static void FillEnclosedHoles(unsigned char* mask)
 			mask[cell] = 1;
 }
 
-// Prefers a stationary unit of the same type as the capture donor: a unit that is driving or
-// deploying can come out as a sliver, and one bad shape would be cached for every unit of
-// that type.
+// 优先挑一个「站着不动的同类型单位」来借画：正在行驶或正在展开的单位容易画出残片，
+// 而一个坏形状会被该类型的所有剪影复用，必须避免。
 static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 {
 	if (!pUnit)
@@ -1707,10 +1695,9 @@ static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 // pushed to the far plane, but an object standing in the box still paints its own pixels
 // back over the box after the flood, and those pixels then read as "not the sentinel"
 // and survive as a hole in the mask forever (the mask is cached per type).
-// The silhouette is captured by drawing a unit at a world position, so that position must be
-// free of objects: a tree or a building there would be erased by the sentinel flood and would
-// then be missing from the cached shape for every unit of that type. This walks outward in
-// rings and returns the nearest cell with no building, no object and the same slope kind.
+// 捕获剪影的方式是「把单位画在世界坐标上」，所以那个坐标必须没有物体：如果那里有树或
+// 建筑，会被哨兵填充抹掉，于是该类型的剪影就永久缺一块。这里向四周一圈圈找最近的、
+// 没有建筑/没有物体、且坡度类型相同的格子。
 static CoordStruct PickCapturePos(const CoordStruct& destination)
 {
 	CellStruct cell = CellClass::Coord2Cell(destination);
@@ -1755,15 +1742,13 @@ static CoordStruct PickCapturePos(const CoordStruct& destination)
 }
 
 
-// Captures one silhouette by borrowing the engine's own drawing code:
-//   * flood the capture box with a sentinel colour, remember the pixels and the Z buffer;
-//   * temporarily relocate the unit, force the destination slope and the requested facing;
-//   * draw it (voxel units through UnitClass::DrawAsVXL, SHP units through their own Draw);
-//   * anything that differs from the sentinel is the silhouette; the second pass with shadows
-//     enabled gives the shadow rows;
-//   * restore pixels, Z buffer and the unit's state, then ask the engine to repaint the rect.
-// Two rules learned the hard way: the borrowed draw must not be clipped to the box (the engine
-// then paints nothing at all), and restoring must use half-open bounds.
+// 借引擎自己的绘制代码捕获一个剪影：
+//   * 先用哨兵色填满捕获框，并记下像素与 Z 缓冲；
+//   * 临时搬动单位、锁住目的地坡度、锁住朝向；
+//   * 画它（体素走 UnitClass::DrawAsVXL，SHP 单位走它自己的 Draw）；
+//   * 与哨兵色不同的像素就是剪影；第二趟开阴影再跑一次，多出来的就是影子行；
+//   * 还原像素、Z 缓冲和单位状态，再让引擎把这块区域标脏重画。
+// 两条血泪规则：借画不能裁剪成捕获框（那样引擎一个像素都不画），还原边界必须是半开区间。
 bool FormationController::CaptureUnitGhostRaw(TechnoClass* pUnit, const CoordStruct& worldPos,
 DirStruct facing, int clipWidth, int clipHeight, GhostPatch& patch){
 if (!pUnit || !TacticalClass::Instance)
@@ -2303,11 +2288,9 @@ return &cache[index];
 }
 return nullptr;
 }
-// Fills the silhouette cache before rendering: at most kCapturesPerFrame new shapes per frame,
-// keyed by (type, facing bucket, slope) so turning the block only recaptures what really
-// differs. Entries used this frame or the previous one are never evicted, and repeated
-// failures pause capturing for a while - a capture that cannot succeed must not be retried
-// every frame, that is a stutter with nothing to show for it.
+// 在渲染之前补剪影缓存：每帧最多 kCapturesPerFrame 个新形状，按（类型、朝向档、坡度）
+// 作键，所以只是转队列时只有真正不同的形状才重捕。本帧和上一帧用过的条目永不被淘汰；
+// 连续失败会暂停一段时间——捕获不出来还每帧重试，只会卡顿且什么都看不到。
 void FormationController::PrepareGhosts(){
 if (state_ != State::Dragging && suppressFrames_ == 0)
 return;

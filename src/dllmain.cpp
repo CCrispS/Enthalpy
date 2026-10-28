@@ -1,6 +1,3 @@
-// Enthalpy: DLL entry. Work here is deliberately tiny - opens the log, records the module handle,
-// and disables thread notifications. Everything else waits for the WinMain hook, because the game
-// is not ready to be touched while DllMain is still running under the loader lock.
 #include "Log.h"
 
 static HMODULE g_hModule = nullptr;

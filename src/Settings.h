@@ -1,10 +1,3 @@
-// Enthalpy: one place for every tunable. Values are read from Enthalpy.ini next to the DLL, in
-// the [Enthalpy] section, and re-read at the start of every gesture - so editing the file takes
-// effect without restarting the game.
-//
-// Booleans are yes/no, colours are "R,G,B" (0..255 each), GhostOpacity is 0..4 where 0 is
-// invisible and 4 is fully opaque. A missing key means the compiled default below; nothing is
-// ever read from RA2MD.INI, so there is exactly one file that can change the behaviour.
 #pragma once
 
 #include <Windows.h>
