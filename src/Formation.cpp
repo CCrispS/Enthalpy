@@ -2483,11 +2483,8 @@ edge = !patch.BodyMask[cell - 1] || !patch.BodyMask[cell + 1]
 			// GhostOpacity. Dimming the outline by terrain brightness made every edge colour
 			// look washed out, which is exactly the "edge colour is gone" report.
 			if (edge)
-				// 看起来就像“透明度只生效了一半”——这是本函数里唯一没有遵循梯度的地方。
-				// 之前这里固定传 8（完全不透明），于是 GhostOpacity 调低时本体变淡、描边仍实心，
-				// 描边必须和本体走同一条 0..4 梯度：0 全透明、2 半透明、4 不透明。
-				pSurface->SetPixel(&pixel, Blend565(under, edgePixel, edgeOpacity));
+				pSurface->SetPixel(&pixel, Blend565(under, edgePixel, 8));
 			else
-				pSurface->SetPixel(&pixel, BlendGhost565(under, ghostPixel, opacity));
+				pSurface->SetPixel(&pixel, Blend565(under, ghostPixel, opacity));
 }
 }}
