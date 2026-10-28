@@ -1,3 +1,9 @@
+## 2026-10-28 · 描边跟随 GhostOpacity 梯度
+
+- `src\Formation.cpp` `BlitGhostPatch()`：描边分支原来固定用 `Blend565(under, edgePixel, 8)`，即**始终 100% 不透明**；`edgeOpacity` 变量算出来却没用上。于是 `GhostOpacity` 调低时本体变淡、轮廓仍是实心，整体看起来像“透明度只生效了一半”。
+- 现在描边与本体走同一条梯度：`Blend565(under, edgePixel, edgeOpacity)`，其中 `edgeOpacity = opacity`。
+- 效果：0 完全不可见、1 = 25%、2 = 50%、3 = 75%、4 完全不透明，与文档定义一致。
+- 实测（同一地图、同一机位、同一手势）：`GhostOpacity=1` 时剪影绿色像素 1642、平均绿通道 224.9；`=4` 时 8201、249.9。
 ## 2026-10-28 · 补回源码注释
 
 - `src\Formation.cpp`：加回文件头（整条流水线）与各关键函数的意图注释：`Update` 状态机与 keeper、`ComputeLayout` 的格位分配、`CommitOrders`、`ServicePendingFacings`（转向一次 + Stop 收尾）、`PrepareGhosts` 缓存与退避、`CaptureUnitGhostRaw` 的借画流程、`BlitGhostPatch` 的透明度与图层、`PickCapturePos`、`IsUsableCell` 的水陆规则等。
