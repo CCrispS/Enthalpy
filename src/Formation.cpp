@@ -2399,6 +2399,23 @@ Logf("ghost cached: type=%p facing=%u foot=(%d,%d) h=%d", pType, quantised,
 entry.Patch.FootX, entry.Patch.FootY, entry.Patch.MaskHeight);
 }}
 
+static DWORD BlendGhost565(DWORD under, DWORD colour, int eighths)
+{
+	int in = eighths < 0 ? 0 : (eighths > 8 ? 8 : eighths);
+	if (in == 0)
+		return under;
+	if (in >= 8)
+		return colour;
+	const int ur = (under >> 11) & 0x1F;
+	const int ug = (under >> 5) & 0x3F;
+	const int ub = under & 0x1F;
+	const int luma = (ur * 8 + ug * 4 + ub) / 13;
+	const int scale = 128 + luma * 2;
+	const DWORD target = ((((colour >> 11) & 0x1F) * scale / 256) << 11)
+		| ((((colour >> 5) & 0x3F) * scale / 256) << 5)
+		| (((colour & 0x1F) * scale / 256));
+	return Blend565(under, target, in);
+}
 void FormationController::BlitGhostPatch(Surface* pSurface, const GhostPatch& patch, int left,
 int top, DWORD tint, DWORD edgeTint, int opacity, int layers, int clipWidth, int clipHeight){
 if (!pSurface || opacity <= 0)
@@ -2429,7 +2446,7 @@ if ((layers & 2) != 0)
 {
 const DWORD underShadow = pSurface->GetPixel(&pixel);
 const int shadowOpacity = (opacity * 3) / 4;
-pSurface->SetPixel(&pixel, Blend565(underShadow, kColorGhostShadow, shadowOpacity));
+pSurface->SetPixel(&pixel, BlendGhost565(underShadow, kColorGhostShadow, shadowOpacity));
 }
 continue;
 }
@@ -2445,6 +2462,6 @@ edge = !patch.BodyMask[cell - 1] || !patch.BodyMask[cell + 1]
 			// is exactly the "GhostOpacity does nothing" report.
 			const DWORD under = pSurface->GetPixel(&pixel);
 			const int edgeOpacity = opacity;
-			pSurface->SetPixel(&pixel, Blend565(under, edge ? edgePixel : ghostPixel, edge ? edgeOpacity : opacity));
+			pSurface->SetPixel(&pixel, BlendGhost565(under, edge ? edgePixel : ghostPixel, edge ? edgeOpacity : opacity));
 }
 }}
