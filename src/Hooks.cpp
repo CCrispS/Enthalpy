@@ -1,3 +1,15 @@
+// Enthalpy: the plugin's four engine hooks, and nothing else.
+//
+//   0x6BD68D  6 bytes  WinMain registrations reached - used to log that the DLL is armed.
+//   0x6D3D10  6 bytes  start of the tactical render - the one place Update() may run.
+//   0x6D9134  6 bytes  render-layer draw - DrawPreview() blits the silhouettes here.
+//   0x692423  6 bytes  inside DisplayClass::ProcessClickCoords - returns early (0x6925FC) while
+//                       ShouldSuppressClick() says the click belongs to a gesture.
+//
+// A hook address may only be taken once per process (Syringe), so addresses Phobos already owns
+// are not usable: 0x6D4C68, 0x6D4B50, 0x6D4684 and 0x692419 all belong to Phobos on this build.
+// The instruction at each address must be at least as long as the hook size, otherwise the tail
+// of the instruction is overwritten and the game crashes on resume.
 #include "Formation.h"
 #include "Log.h"
 #include "Compat.h"

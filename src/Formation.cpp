@@ -1,5 +1,21 @@
-// Rebuilt mechanically after an editing accident collapsed this file to one line.
-// Comments were lost in the process; the code itself is unchanged.
+// Enthalpy - RA3-style formation orders for Yuri's Revenge, as a standalone Syringe plugin.
+//
+// Pipeline, in the order it runs every frame:
+//   1. Update()           - reads the mouse, runs the gesture state machine, keeps arrived units
+//                           on their cells and drives the arrival facing.
+//   2. ComputeLayout()    - turns the cursor into one target cell per unit (obstacles, claims,
+//                           infantry sub-slots, air height).
+//   3. PrepareGhosts()    - fills the silhouette cache before the frame is drawn.
+//   4. DrawPreview()      - blits cached silhouettes; it never captures anything itself.
+//   5. CommitOrders()     - on release, orders every unit to its cell and arms the keeper.
+//
+// Silhouettes are not drawn by hand. CaptureUnitGhostRaw borrows a real engine draw of the unit
+// onto the tactical surface, diffs the result against a sentinel colour and stores two byte masks
+// that DrawPreview blends later - which is why the capture code looks so unusual.
+//
+// This file was rebuilt mechanically once after an editing accident and lost most of its
+// comments; the ones below were re-added by hand and describe intent, not just mechanics.
+
 #include "Formation.h"
 #include "Log.h"
 #include "Settings.h"
@@ -188,6 +204,8 @@ result.X += offsetX;
 result.Y += offsetY;
 return result;
 }
+// World position of a cell centre including terrain height and bridge deck (GetCoordsWithBridge),
+// so a silhouette on a ramp sits on the ramp instead of on the flat ground below it.
 bool CellWorldPos(int cellX, int cellY, int offsetX, int offsetY, CoordStruct& out)
 {
 if (!MapClass::Instance)
@@ -203,6 +221,11 @@ out.X += offsetX;
 out.Y += offsetY;
 return true;
 }
+// Decides whether a cell may hold this unit. Two independent questions:
+//   * can the unit be there at all - water vs land follows the unit's SpeedType, not the map
+//     legend, so ships are refused on grass and tanks on water;
+//   * is the square already blocked - only buildings and terrain objects (trees, rocks) count,
+//     because units standing there will be ordered away by the formation itself.
 bool IsUsableCell(CellClass* pCell, TechnoClass* pUnit)
 {
 	if (!pCell)
@@ -277,6 +300,8 @@ bool FormationController::RightButtonDown(){
 bool FormationController::MiddleButtonDown(){
 	return (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
 }
+// The game window is found through Win32 instead of WWMouseClass: the engine's mouse object in
+// this build does not match the header layout, and writing through it corrupted the stack.
 HWND FormationController::GameWindow(){
 static HWND hwnd = nullptr;
 if (hwnd && IsWindow(hwnd))
@@ -319,6 +344,10 @@ out.X = point.x;
 out.Y = point.y;
 return true;
 }
+// Cursor to world. The engine's ClientToCoords only solves the flat ground plane, so the first
+// answer is lifted to its cell's height and the projection is corrected iteratively; the
+// result with the smallest residual wins. A one-cell hysteresis keeps the layout from
+// jittering while the cursor rests on a cell border.
 bool FormationController::CursorWorldPos(CoordStruct& out){
 if (!TacticalClass::Instance)
 return false;
@@ -369,6 +398,9 @@ return false;
 out = best;
 return true;
 }
+// ENGINE ABI: this build's ClientToCoords takes the destination CoordStruct first and the
+// client point second - the reverse of the YRpp declaration. Both arguments are passed as the
+// opposite pointer type on purpose; do not 'fix' this.
 void FormationController::ClientToWorld(const Point2D& client, CoordStruct& world){
 if (!TacticalClass::Instance)
 return;
@@ -410,6 +442,8 @@ return true;
 }
 return false;
 }
+// Selection snapshot: a gesture keeps working on the units selected when it started, even if
+// the engine drops the selection afterwards.
 void FormationController::GatherSelectedUnits(){
 unitCount_ = CollectSelected(units_, kMaxUnits);
 for (int i = 1; i < unitCount_; ++i)
@@ -513,6 +547,8 @@ return true;
 static constexpr int kAirThreshold = 96;
 
 
+// Flight height for airborne units: aircraft use the rules' FlightLevel, jumpjets are detected
+// by their altitude above the cell they hover over.
 static int AirHeightFor(TechnoClass* pUnit)
 {
 	if (!pUnit)
@@ -536,6 +572,10 @@ static int AirHeightFor(TechnoClass* pUnit)
 // target cell.  Voxel art carries no shadow pixels of its own, in which case a soft ellipse
 // is stamped under the cell instead.
 static void DrawGroundShadow(Surface* pSurface, const Point2D& centre, int width, int height,
+// Blends a cached silhouette onto the surface. opacity is in eighths (GhostOpacity 0..4 maps
+// to 0..8), the outline uses the same weight so every setting is visibly different, and
+// layers selects the body (bit 0) and/or the shadow (bit 1) - aircraft paint the body at
+// their flight height and the shadow on the ground, hence the split.
 	int opacity, int clipWidth, int clipHeight)
 {
 	if (!pSurface || opacity <= 0)
@@ -567,6 +607,11 @@ static void DrawGroundShadow(Surface* pSurface, const Point2D& centre, int width
 		}
 	}
 }
+// Builds one plan per selected unit for the current cursor position. Order of work matters:
+// the anchor cell is the ideal cell for the first unit, obstacles may force a ring search, a
+// cell already claimed by an earlier slot only shifts that slot (it does not turn red - red
+// means the ground itself blocks it), infantry share a cell three deep using the engine's own
+// FindInfantrySubposition, and airborne units get a flight height plus a ground shadow cell.
 void FormationController::ComputeLayout(){
 CoordStruct candidate = {
  0, 0, 0 }
@@ -862,6 +907,11 @@ lastCellY = firstCellY;
 }
 }}
 
+// Issues the orders. SetDestination alone is not enough: the engine keeps the previous mission
+// queued, so a leftover Move from an earlier gesture could fire later. ForceMission makes the
+// new order the current one. It also arms the keeper (trackFrames_, wasHome_, permanent_), the
+// thing that stops arrived units from wandering, and the facing records read by
+// ServicePendingFacings.
 void FormationController::CommitOrders(){
 	permanentCount_ = 0;
 	releaseGuard_ = 90;
@@ -923,6 +973,11 @@ Logf("formation: commit %d/%d orders (columns=%d ranks=%d spacingCells=%d anchor
 issued, unitCount_, columns_, ranks_, spacingCells_, anchor_.X, anchor_.Y,
 static_cast<int>(facingDir_.value()));
 }
+// Turns every arrived unit to the facing its silhouette showed, then takes it out of all moving
+// missions (Stop). Guard, Area Guard and Move each carry a destination - the cell the unit was
+// ordered from - so the engine walks the unit back to it; Stop carries none.
+// The turn is requested per frame so the engine rotates at the unit's own ROT, but only until
+// the facing is reached: re-arming it makes the unit spin in place forever.
 void FormationController::ServicePendingFacings(){
 	int alive = 0;
 	for (int index = 0; index < pendingCount_; ++index)
@@ -1038,6 +1093,8 @@ void FormationController::ServicePendingFacings(){
 	}
 	pendingCount_ = alive;
 }
+// Fail-safe: any unrecoverable condition turns the plugin off for the session instead of
+// leaving a half-working gesture in the player's way.
 void FormationController::Disable(const char* reason)
 {
 if (disabled_)
@@ -1047,6 +1104,11 @@ disabled_ = true;
 Logf("formation: disabled - %s", reason ? reason : "unspecified");
 }
 
+// Gesture state machine plus the keeper.
+//   Idle      - middle button released; watching for a fresh press with a selection.
+//   Dragging  - middle button held; recompute the layout, DrawPreview draws the result.
+//   Cooldown  - after release; swallows the click that the release itself generates.
+// The keeper never restarts a march: it only pins units that already stand in their cell.
 void FormationController::Update(){
 if (disabled_)
 return;
@@ -1336,6 +1398,9 @@ leftWasDown_ = leftDown;
 rightWasDown_ = rightDown;
 middleWasDown_ = middleDown;
 }
+// True while the engine must not turn a click into an order. Without this the left-button
+// release inside a gesture orders a plain move to the cursor. Deliberately narrow: a plain
+// right click must still deselect.
 bool FormationController::ShouldSuppressClick(){
 	// Suppress only while a formation gesture is (or may be) under way: the right button
 	// must be held AND the left button must have been down at some point during that hold.
@@ -1368,6 +1433,9 @@ bool FormationController::ShouldSuppressClick(){
 	return suppress;
 }
 
+// Draws the preview from the cache only. Capturing here would paint borrowed units into the
+// frame being rendered; captures happen earlier, in Update(), where the world is redrawn over
+// them. One pass per frame is enforced because blending twice doubles the opacity.
 void FormationController::DrawPreview(){
 if (disabled_)
 return;
@@ -1568,6 +1636,8 @@ opacity, 0, 0, surfaceWidth - 1, surfaceHeight - 1);
 // An occluder on the capture spot eats pixels out of the middle of a silhouette, leaving an
 // enclosed hole.  Anything the mask does not cover that cannot reach the border is such a
 // hole; filling it keeps the ghost complete no matter what was drawn there first.
+// Seals holes that an occluder left inside the silhouette: a flood fill from the border marks
+// every outside pixel, so any mask pixel not reached is enclosed and gets promoted to body.
 static void FillEnclosedHoles(unsigned char* mask)
 {
 	const int w = 192;
@@ -1604,6 +1674,9 @@ static void FillEnclosedHoles(unsigned char* mask)
 			mask[cell] = 1;
 }
 
+// Prefers a stationary unit of the same type as the capture donor: a unit that is driving or
+// deploying can come out as a sliver, and one bad shape would be cached for every unit of
+// that type.
 static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 {
 	if (!pUnit)
@@ -1634,6 +1707,10 @@ static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 // pushed to the far plane, but an object standing in the box still paints its own pixels
 // back over the box after the flood, and those pixels then read as "not the sentinel"
 // and survive as a hole in the mask forever (the mask is cached per type).
+// The silhouette is captured by drawing a unit at a world position, so that position must be
+// free of objects: a tree or a building there would be erased by the sentinel flood and would
+// then be missing from the cached shape for every unit of that type. This walks outward in
+// rings and returns the nearest cell with no building, no object and the same slope kind.
 static CoordStruct PickCapturePos(const CoordStruct& destination)
 {
 	CellStruct cell = CellClass::Coord2Cell(destination);
@@ -1678,6 +1755,15 @@ static CoordStruct PickCapturePos(const CoordStruct& destination)
 }
 
 
+// Captures one silhouette by borrowing the engine's own drawing code:
+//   * flood the capture box with a sentinel colour, remember the pixels and the Z buffer;
+//   * temporarily relocate the unit, force the destination slope and the requested facing;
+//   * draw it (voxel units through UnitClass::DrawAsVXL, SHP units through their own Draw);
+//   * anything that differs from the sentinel is the silhouette; the second pass with shadows
+//     enabled gives the shadow rows;
+//   * restore pixels, Z buffer and the unit's state, then ask the engine to repaint the rect.
+// Two rules learned the hard way: the borrowed draw must not be clipped to the box (the engine
+// then paints nothing at all), and restoring must use half-open bounds.
 bool FormationController::CaptureUnitGhostRaw(TechnoClass* pUnit, const CoordStruct& worldPos,
 DirStruct facing, int clipWidth, int clipHeight, GhostPatch& patch){
 if (!pUnit || !TacticalClass::Instance)
@@ -2217,6 +2303,11 @@ return &cache[index];
 }
 return nullptr;
 }
+// Fills the silhouette cache before rendering: at most kCapturesPerFrame new shapes per frame,
+// keyed by (type, facing bucket, slope) so turning the block only recaptures what really
+// differs. Entries used this frame or the previous one are never evicted, and repeated
+// failures pause capturing for a while - a capture that cannot succeed must not be retried
+// every frame, that is a stutter with nothing to show for it.
 void FormationController::PrepareGhosts(){
 if (state_ != State::Dragging && suppressFrames_ == 0)
 return;

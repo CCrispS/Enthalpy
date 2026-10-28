@@ -1,3 +1,6 @@
+// Enthalpy: fallback silhouette for units that have no voxel model. It reads the unit's own SHP
+// frame through the engine's SHP routines and blends a tinted copy, which is the only way to get
+// a real 2D shape for those types.
 #pragma once
 
 #include <Windows.h>

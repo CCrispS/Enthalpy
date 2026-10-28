@@ -1,3 +1,9 @@
+// Enthalpy: the plugin's whole state. Read the constants first, then the SlotPlan (one unit's
+// target), GhostPatch (a cached silhouette mask), GhostCacheEntry (its key) and the controller
+// itself, whose methods are documented in Formation.cpp.
+//
+// Units of a formation are kept in units_[index] and their targets in slots_[index]; the arrays
+// are parallel, so index is the identity of a unit for the whole gesture.
 #pragma once
 
 #include <YRPP.h>

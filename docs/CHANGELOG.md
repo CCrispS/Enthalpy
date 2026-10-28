@@ -1,3 +1,7 @@
+## 2026-10-28 · 补回源码注释
+
+- `src\Formation.cpp`：加回文件头（整条流水线）与各关键函数的意图注释：`Update` 状态机与 keeper、`ComputeLayout` 的格位分配、`CommitOrders`、`ServicePendingFacings`（转向一次 + Stop 收尾）、`PrepareGhosts` 缓存与退避、`CaptureUnitGhostRaw` 的借画流程、`BlitGhostPatch` 的透明度与图层、`PickCapturePos`、`IsUsableCell` 的水陆规则等。
+- 其余文件补文件头：`Hooks.cpp`（四个 hook 地址与为何不能用 Phobos 占用的地址）、`Settings.*`（只读 Enthalpy.ini）、`Compat.h`（载入自检）、`dllmain.cpp`、`Log.cpp`、`Formation.h`、`ShpGhost.h`。
 ## 2026-10-27 · 捕获裁剪：杜绝残留像素冒充剪影
 
 - 借画单位时把裁剪矩形改为捕获框本身（`RectangleStruct clip = { capLeft, capTop, capRight - capLeft, capBottom - capTop }`），引擎不再能画到框外。
