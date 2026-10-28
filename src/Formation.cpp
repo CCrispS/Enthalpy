@@ -1426,6 +1426,13 @@ bool FormationController::ShouldSuppressClick(){
 // 捕获放在更早的 Update() 里，那一帧的世界绘制会把痕迹覆盖掉。
 // 每帧只允许一遍：混合两遍等于把透明度翻倍，ini 调了也看不出效果。
 void FormationController::DrawPreview(){
+	static long long lastDrawTick = 0;
+	LARGE_INTEGER nowTick; QueryPerformanceCounter(&nowTick);
+	LARGE_INTEGER freq; QueryPerformanceFrequency(&freq);
+	const long long elapsedMs = freq.QuadPart > 0 ? (nowTick.QuadPart - lastDrawTick) * 1000 / freq.QuadPart : 1000;
+	if (lastDrawTick != 0 && elapsedMs < 10)
+		return;
+	lastDrawTick = nowTick.QuadPart;
 if (disabled_)
 return;
 ++drawFrames_;
