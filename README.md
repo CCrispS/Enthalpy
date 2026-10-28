@@ -81,6 +81,10 @@ cd Enthalpy
 
 每个键的含义、取值范围与预设组合见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)；用户可见的改动记录见 [docs/CHANGELOG.md](docs/CHANGELOG.md)。
 
+## 发布与协作
+
+所有改动走 PR，main 只接受 PR 合并；每个 Release 同时提供源码（GitHub 自动生成）与编译产物 zip。详见 [docs/RELEASING.md](docs/RELEASING.md)。
+
 ## 仓库结构
 
 ```
