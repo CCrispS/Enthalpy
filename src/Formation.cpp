@@ -2071,7 +2071,6 @@ pLoco->Do_Turn(oldFacing);
 	const bool fullOk = bodyOk && renderPass(false, patch.Mask, false);
 	// A third DrawBehind pass used to run here; it painted no pixels for any unit type on this
 	// engine, so it only cost a full box walk per capture.
-	const bool behindOk = fullOk;
 	// Put the flooded ground back before anything else can look at the surface.
 	PixelLockGuard pixelLockRestore(pSurface);
 	for (int y = capTop; y < capBottom; ++y)
@@ -2106,6 +2105,7 @@ zbSaved = nullptr;
 }	// Seal enclosed holes so an occluder can never leave a bitten-out silhouette behind.
 	FillEnclosedHoles(patch.BodyMask);
 	FillEnclosedHoles(patch.Mask);
+	const bool behindOk = fullOk;
 	(void)behindOk;
 	if (!bodyOk || !fullOk)
 		return false;
@@ -2130,7 +2130,12 @@ zbSaved = nullptr;
 		}
 	}
 
-	if (engineShadow == 0)
+	// A ramp tilts the model so its lower half turns dark; the brightness rule below would then
+	// mistake real body pixels for shadow and punch holes straight through the silhouette.  Slopes
+	// therefore only accept a shadow the engine itself separated.
+	CellClass* pCaptureCell = MapClass::Instance ? MapClass::Instance->TryGetCellAt(worldPos) : nullptr;
+	const bool captureOnRamp = pCaptureCell && pCaptureCell->Tile_Is_Ramp();
+	if (engineShadow == 0 && !captureOnRamp)
 	{
 		for (int cell = 0; cell < kGhostWidth * kGhostHeight; ++cell)
 		{
@@ -2146,6 +2151,10 @@ zbSaved = nullptr;
 				shadowFlag[cell] = 1;
 		}
 	}
+
+	// Whatever the split decided, a silhouette with a hole in it is never acceptable: fill any
+	// enclosed gap so a dark patch inside the body cannot show through as missing pixels.
+	FillEnclosedHoles(patch.BodyMask);
 
 	// A 2D SHP shadow sprite is skewed far past its body (the Terror Drone's worst of all), so
 	// SHP art skips it entirely and gets a compact projected shadow further down instead.
