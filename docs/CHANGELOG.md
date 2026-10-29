@@ -1,3 +1,9 @@
+## 2026-10-29 · 修复部分地图剪影完全不显示
+
+- `src/Hooks.cpp`：新增第二个绘制点 `0x6D9076`（在地形之后、每帧必走）。原来的 `0x6D9134` 位于“渲染层”分支，像纯沙地这种没有任何渲染层的地图根本不会执行到，于是 `DrawPreview()` 一次都没被调用，整局没有任何剪影。
+- `src/Formation.cpp`：`DrawPreview()` 的每帧去重守卫只比较 `lastDrawFrame` 却从未赋值，等于从未生效；现在补上 `lastDrawFrame = frameId_;`，两个绘制点里先执行的那个负责绘制、后执行的自动跳过，避免同一帧混合两遍把透明度翻倍。
+- 实测（沙漠地图、`GhostOpacity=2`）：剪影像素 6505 / 6522，本体采样色 `(107,219,57)` 正好是 50% 混合，两帧一致；该地图上不再出现 `WARNING the ghost draw hook never ran`。
+
 ## 2026-10-28 · GhostOpacity 改为纯线性 alpha
 
 - 剪影本体不再按地形亮度预乘色值（旧实现 BlendGhost565 会把绿色压向背景，导致 1/2/3 档几乎看不出差别），改为直接 Blend565(under, colour, opacity)，0/1/2/3/4 即 0/25/50/75/100 %。

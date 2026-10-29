@@ -82,6 +82,15 @@ DEFINE_HOOK(6D3D10, Enthalpy_TacticalRender_Before, 6)
 // Late in TacticalClass::Render, after the world, trees, units and their pips are on the
 // surface.  Drawing here is what keeps the preview from being covered by scenery.
 // The overwritten instruction is `push 0x886FA0` (5 bytes).
+// A second draw point. 0x6D9134 sits in the render-layer pass, which some maps never run
+// (plain terrain with no layers at all), so on those maps every silhouette vanished.
+// 0x6D9076 runs on every frame, right after the terrain, and covers exactly those maps.
+// Whichever of the two runs first in a frame paints; the other is deduped by frame id.
+DEFINE_HOOK(6D9076, Enthalpy_TacticalRender_Layers, 5)
+{
+	FormationController::Instance().DrawPreview();
+	return 0;
+}
 DEFINE_HOOK(6D9134, Enthalpy_TacticalRender_AfterWorld, 5)
 {
 	FormationController::Instance().DrawPreview();
