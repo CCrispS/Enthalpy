@@ -215,6 +215,10 @@ static constexpr int kFacingDeadband = 1638;   // 约 9 度（1/65536 圈为单�
 	// Advances once per frame; keeps engine-side ghost capture to one per frame.
 	int frameId_ = 0;
 	int lateDrawFrame_ = -1;
+	int seenDrawer_ = 0;
+	int expectedDrawer_ = 0;
+	int drawStallFrames_ = 0;
+	bool drewThisFrame_ = false;
 
 	TechnoClass* units_[256] = {};
 	int unitCount_ = 0;

@@ -1103,6 +1103,28 @@ void FormationController::Update(){
 if (disabled_)
 return;
 ++frameId_;
+	// Keep only the draw hook that reported last, because that is the one the engine calls later in
+	// the frame; if it stops reporting (map change, another plugin), fall back to accepting either.
+	if (seenDrawer_ != 0)
+	{
+		expectedDrawer_ = seenDrawer_;
+		seenDrawer_ = 0;
+	}
+	if (state_ != State::Dragging)
+	{
+		expectedDrawer_ = 0;
+		drawStallFrames_ = 0;
+	}
+	else if (drewThisFrame_)
+	{
+		drawStallFrames_ = 0;
+	}
+	else if (++drawStallFrames_ > 3)
+	{
+		expectedDrawer_ = 0;
+		drawStallFrames_ = 0;
+	}
+	 drewThisFrame_ = false;
 	++gUpdateCalls;
 
 // If the frame hook keeps firing but the draw hook never does, another plugin owns the
@@ -1445,20 +1467,22 @@ return;
 	if (state_ != State::Dragging || slotCount_ <= 0)
 		return;
 
-	// Two hooks can report the same frame: 0x6D9134 paints after the world, 0x6D9076 paints before it
-	// and only exists because some maps never execute the late one.  Never let the early paint own a
-	// frame while the late hook is alive, otherwise whatever it drew is covered by the terrain and the
-	// silhouettes simply disappear on those maps.
-	if (late)
-		lateDrawFrame_ = frameId_;
-	else if (lateDrawFrame_ >= frameId_ - 1)
+	// Which of the two draw hooks runs later depends on the map: the engine walks a different render
+	// path when it has layers, and painting from the earlier one leaves the silhouette buried under
+	// whatever the later stages cover it with.  Rather than guess, remember which hook reported last
+	// in the previous frame and only let that one paint; Update() re-learns it every frame.
+	const int drawer = late ? 2 : 1;
+	seenDrawer_ = drawer;
+	if (expectedDrawer_ != 0 && drawer != expectedDrawer_)
 		return;
+
 
 	// One pass per frame keeps the blend opacity honest.
 	static int lastDrawFrame = -1;
 	if (lastDrawFrame == frameId_)
 		return;
 	lastDrawFrame = frameId_;
+	drewThisFrame_ = true;
 
 	TacticalClass* pTactical = TacticalClass::Instance;
 	if (!pTactical)
