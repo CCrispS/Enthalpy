@@ -435,6 +435,10 @@ for (int index = 0; index < TechnoClass::Array->Count; ++index)
 if (TechnoClass::Array->Items[index] == pTechno)
 return true;
 }
+
+// A unit pointer kept across frames can be destroyed by the engine at any time (the most common case
+// is an MCV deploying into a construction yard, which replaces the UnitClass with a BuildingClass).
+// Any virtual call on such a pointer lands on freed memory, so the gesture is dropped instead.
 return false;
 }
 // 閫夋嫨蹇収锛氫竴娆℃墜鍔夸粠澶村埌灏鹃兘浣滅敤鍦ㄣ€屾寜涓嬫椂閫変腑鐨勯偅鎵瑰崟浣嶃€嶄笂锛?
@@ -1099,11 +1103,40 @@ Logf("formation: disabled - %s", reason ? reason : "unspecified");
 //   Dragging  涓敭鎸変綇锛屾寔缁噸绠楀竷灞€锛孌rawPreview 璐熻矗鐢伙紱
 //   Cooldown  鏉炬墜涔嬪悗锛岀敤鏉ュ悶鎺夎繖娆℃澗寮€鏈韩浜х敓鐨勯偅涓€涓嬬偣鍑汇€?
 // 涓嬮潰鐨?keeper 缁濅笉閲嶆柊鍙戣捣琛屽啗锛氬畠鍙拤浣忋€屽凡缁忕珯鍦ㄨ嚜宸辨牸瀛愰噷銆嶇殑鍗曚綅銆?
+
+void FormationController::PruneDead(){
+	if (unitCount_ <= 0)
+		return;
+	int lost = 0;
+	int kept = 0;
+	for (int index = 0; index < unitCount_; ++index)
+	{
+		TechnoClass* pTechno = units_[index];
+		if (pTechno && IsAlive(pTechno))
+			units_[kept++] = pTechno;
+		else
+			++lost;
+	}
+	if (lost == 0)
+		return;
+	unitCount_ = kept;
+	if (state_ == State::Dragging)
+	{
+		state_ = State::Idle;
+		slotCount_ = 0;
+		pendingCount_ = 0;
+		suppressFrames_ = 0;
+	}
+	Logf("units: %d unit(s) disappeared mid-gesture, %d left", lost, unitCount_);
+}
 void FormationController::Update(){
 if (disabled_)
 return;
 ++frameId_;
 	++gUpdateCalls;
+
+	// Drop units the engine destroyed since the last frame before anything dereferences them.
+	PruneDead();
 
 // If the frame hook keeps firing but the draw hook never does, another plugin owns the
 // draw address (Syringe allows one hook per address) and ghosts cannot be painted.  Saying
@@ -1486,6 +1519,13 @@ Logf("ghost draw: setting=%d opacity=%d", settings.GhostOpacity, opacity);
 		PendingFacing& item = pending_[index];
 		if (!item.Unit || item.Applied || item.FramesLeft <= 0)
 			continue;
+		// A pending facing can outlive its unit (deployed MCV, destroyed unit): drop it before
+		// touching the object, otherwise the virtual call lands on freed memory.
+		if (!IsAlive(item.Unit))
+		{
+			item.Applied = true;
+			continue;
+		}
 		if (AirHeightFor(item.Unit) <= 0)
 			continue;
 		ILocomotion* pLoco = static_cast<FootClass*>(item.Unit)->Locomotor.operator->();

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <YRPP.h>
 
@@ -197,7 +197,8 @@ static constexpr int kFacingDeadband = 1638;   // 约 9 度（1/65536 圈为单�
 		DirStruct facing);
 
 	static int CollectSelected(TechnoClass** buffer, int capacity);
-	static bool IsAlive(TechnoClass* pTechno);	static bool WithinCell(TechnoClass* pTechno, int cellX, int cellY);
+	static bool IsAlive(TechnoClass* pTechno);
+	void PruneDead();	static bool WithinCell(TechnoClass* pTechno, int cellX, int cellY);
 
 	bool disabled_ = false;
 	bool warnedAboutMissingDraw_ = false;

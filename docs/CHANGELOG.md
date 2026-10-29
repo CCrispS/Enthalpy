@@ -1,3 +1,12 @@
+## 2026-10-29 · 部署基地车时不再因悬空单位指针崩溃
+
+- 症状：展开基地车（MCV）时弹出 `Fatal Error`，`except.txt` 是 `C0000005 at 00000000`、`EIP: 00000000`，栈顶返回地址落在 `DrawPreview()+0x114`。
+- 原因：引擎把 MCV 展开时，`UnitClass` 被替换成 `BuildingClass`，原对象已释放；而 `units_[]` / `pending_[]` 里保存的还是旧指针。`DrawPreview()` 里的飞行朝向固定循环先调 `AirHeightFor()`（内部是虚函数），剪影循环又先调 `GetTechnoType()` 再判断存活，于是虚调用落在已释放内存的 vtable 上（常被清零），表现就是 `EIP = 0`。
+- 修复：
+  - `Update()` 开头新增 `PruneDead()`：逐帧确认每个 `units_[i]` 仍在 `TechnoClass::Array` 里；一旦发现有单位消失，就把本次手势整体收掉（`State::Idle`、清空 slots/pending/suppressFrames），并记日志 `units: N unit(s) disappeared mid-gesture`，避免让槽位与单位错位。
+  - `DrawPreview()` 的飞行朝向固定循环：先 `IsAlive(item.Unit)`，已死则把该 `PendingFacing` 标记为 `Applied` 并跳过。
+  - `DrawPreview()` 的剪影循环：把 `IsAlive()` 判定提到 `GetTechnoType()` / `WhatAmI()` 之前。
+- 实测：普通列队流程无回归（`commit`、`facing applied`、落地正常），部署基地车的用例由用户复测。
 ## 2026-10-29 · 斜坡剪影不再带偏单位本体
 
 - 取剪影形状时要临时把被借用单位的移动控制器切到目的地格的坡度（`ILocomotion::Force_New_Slope`），但旧代码只还原了坐标、朝向、炮塔朝向，**没有还原坡度**。这个状态是黏在移动控制器上的，于是被借用的那个单位（往往正是玩家选中的那批）会一直保持剪影的倾斜角，看起来就是"本体图像跟着剪影动"。
