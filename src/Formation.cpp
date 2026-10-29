@@ -1,4 +1,4 @@
-﻿// Enthalpy 鈥斺€?灏ら噷鐨勫浠囥€岀孩鑹茶鎴? 寮忓垪闃熴€嶇嫭绔?Syringe 鎻掍欢銆?
+// Enthalpy 鈥斺€?灏ら噷鐨勫浠囥€岀孩鑹茶鎴? 寮忓垪闃熴€嶇嫭绔?Syringe 鎻掍欢銆?
 //
 // 姣忓抚鐨勬墽琛岄『搴忥細
 //   1. Update()        璇婚紶鏍囥€佽窇鎵嬪娍鐘舵€佹満銆佹妸宸插埌浣嶇殑鍗曚綅閽夊湪鏍煎瓙閲屻€侀┍鍔ㄦ渶缁堟湞鍚戯紱
@@ -1692,6 +1692,10 @@ static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 		return pUnit;
 	if (!TechnoClass::Array)
 		return pUnit;
+	// Two passes: prefer a same-type unit the player has NOT selected, because borrowing a
+	// draw from a selected unit means mutating one of the objects the player is watching.
+	// Only fall back to a selected one when it is the sole candidate of that type.
+	TechnoClass* pSelectedFallback = nullptr;
 	for (int i = 0; i < TechnoClass::Array->Count; ++i)
 	{
 		TechnoClass* pOther = TechnoClass::Array->Items[i];
@@ -1702,9 +1706,15 @@ static TechnoClass* FindCaptureDonor(TechnoClass* pUnit, TechnoTypeClass* pType)
 			continue;
 		if (pOther->InLimbo || !pOther->IsAlive)
 			continue;
+		if (pOther->IsSelected)
+		{
+			if (!pSelectedFallback)
+				pSelectedFallback = pOther;
+			continue;
+		}
 		return pOther;
 	}
-	return pUnit;
+	return pSelectedFallback ? pSelectedFallback : pUnit;
 }
 // The cache is keyed by type + facing bucket + slope, so the borrowed draw does not
 // have to happen on the destination cell at all.  Capturing on a bare cell instead of
@@ -2072,6 +2082,13 @@ pLoco->Do_Turn(oldFacing);
 	// A third DrawBehind pass used to run here; it painted no pixels for any unit type on this
 	// engine, so it only cost a full box walk per capture.
 	const bool behindOk = fullOk;
+	// Force_New_Slope is sticky state on the locomotor.  If it is left pointing at the
+	// destination cell, the borrowed unit keeps the destination's tilt until its locomotion
+	// happens to refresh it again, and that unit is very often one of the player's own
+	// selected units, so the real image starts leaning with the silhouette.  Put the donor
+	// back on the slope it actually stands on right away.
+	if (pLoco)
+		pLoco->Force_New_Slope(ownSlope >= 0 ? ownSlope : 0);
 	// Put the flooded ground back before anything else can look at the surface.
 	PixelLockGuard pixelLockRestore(pSurface);
 	for (int y = capTop; y < capBottom; ++y)
