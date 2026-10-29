@@ -1,4 +1,4 @@
-#include "Formation.h"
+﻿#include "Formation.h"
 #include "Log.h"
 #include "Compat.h"
 
@@ -88,12 +88,12 @@ DEFINE_HOOK(6D3D10, Enthalpy_TacticalRender_Before, 6)
 // Whichever of the two runs first in a frame paints; the other is deduped by frame id.
 DEFINE_HOOK(6D9076, Enthalpy_TacticalRender_Layers, 5)
 {
-	FormationController::Instance().DrawPreview();
+	FormationController::Instance().DrawPreview(false);
 	return 0;
 }
 DEFINE_HOOK(6D9134, Enthalpy_TacticalRender_AfterWorld, 5)
 {
-	FormationController::Instance().DrawPreview();
+	FormationController::Instance().DrawPreview(true);
 	return 0;
 }
 
