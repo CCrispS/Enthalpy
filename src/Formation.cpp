@@ -1759,6 +1759,66 @@ static CoordStruct PickCapturePos(const CoordStruct& destination)
 //   * 涓庡摠鍏佃壊涓嶅悓鐨勫儚绱犲氨鏄壀褰憋紱绗簩瓒熷紑闃村奖鍐嶈窇涓€娆★紝澶氬嚭鏉ョ殑灏辨槸褰卞瓙琛岋紱
 //   * 杩樺師鍍忕礌銆乑 缂撳啿鍜屽崟浣嶇姸鎬侊紝鍐嶈寮曟搸鎶婅繖鍧楀尯鍩熸爣鑴忛噸鐢汇€?
 // 涓ゆ潯琛€娉鍒欙細鍊熺敾涓嶈兘瑁佸壀鎴愭崟鑾锋锛堥偅鏍峰紩鎿庝竴涓儚绱犻兘涓嶇敾锛夛紝杩樺師杈圭晫蹇呴』鏄崐寮€鍖洪棿銆?
+static WORD* g_PixelBase = nullptr;
+static int g_PixelPitch = 0;
+// A capture walks roughly 400k pixels through Surface::GetPixel/SetPixel, and those virtual calls
+// alone cost 7-20 ms - more than a frame.  DSurface can hand out its pixels through Lock()/GetPitch()
+// instead, so one lock per pass turns the same walk into plain array access.  The guard keeps a
+// previous lock alive if one is already held, and the accessors fall back to the virtual calls when
+// the surface refuses to lock (or is not 16-bit).
+struct PixelLockGuard
+{
+	WORD* PreviousBase;
+	int PreviousPitch;
+	WORD* Base = nullptr;
+	int Pitch = 0;
+	Surface* Target = nullptr;
+
+	explicit PixelLockGuard(Surface* pSurface)
+		: PreviousBase(g_PixelBase), PreviousPitch(g_PixelPitch)
+	{
+		Target = pSurface;
+		if (pSurface && pSurface->GetBytesPerPixel() == 2)
+		{
+			Base = static_cast<WORD*>(pSurface->Lock(0, 0));
+			if (Base)
+			{
+				const int pitchBytes = pSurface->GetPitch();
+				Pitch = pitchBytes >= 2 ? pitchBytes / 2 : pSurface->Width;
+				if (Pitch <= 0)
+					Pitch = pSurface->Width;
+			}
+		}
+		g_PixelBase = Base ? Base : PreviousBase;
+		g_PixelPitch = Base ? Pitch : PreviousPitch;
+	}
+	~PixelLockGuard()
+	{
+		g_PixelBase = PreviousBase;
+		g_PixelPitch = PreviousPitch;
+		if (Base && Target)
+			Target->Unlock();
+	}
+};
+
+static inline DWORD ReadSurfacePixel(Surface* pSurface, int x, int y)
+{
+	if (g_PixelBase)
+		return g_PixelBase[static_cast<size_t>(y) * static_cast<size_t>(g_PixelPitch) + x];
+	Point2D pixel = { static_cast<short>(x), static_cast<short>(y) };
+	return pSurface->GetPixel(&pixel);
+}
+
+static inline void WriteSurfacePixel(Surface* pSurface, int x, int y, DWORD colour)
+{
+	if (g_PixelBase)
+	{
+		g_PixelBase[static_cast<size_t>(y) * static_cast<size_t>(g_PixelPitch) + x] = static_cast<WORD>(colour);
+		return;
+	}
+	Point2D pixel = { static_cast<short>(x), static_cast<short>(y) };
+	pSurface->SetPixel(&pixel, colour);
+}
 bool FormationController::CaptureUnitGhostRaw(TechnoClass* pUnit, const CoordStruct& worldPos,
 DirStruct facing, int clipWidth, int clipHeight, GhostPatch& patch){
 if (!pUnit || !TacticalClass::Instance)
@@ -1846,14 +1906,15 @@ target.Z = cellPos.Z;
 	if (capRight > surfWidth) capRight = surfWidth;
 	if (capBottom > surfHeight) capBottom = surfHeight;
 	Point2D pixel = { 0, 0 };
+	PixelLockGuard pixelLockFlood(pSurface);
 	for (int y = capTop; y < capBottom; ++y)
 	{
 		for (int x = capLeft; x < capRight; ++x)
 		{
 			pixel.X = static_cast<short>(x);
 			pixel.Y = static_cast<short>(y);
-			before[(y - capTop) * kBeforeStride + (x - capLeft)] = pSurface->GetPixel(&pixel);
-			pSurface->SetPixel(&pixel, kCaptureSentinel);
+			before[(y - capTop) * kBeforeStride + (x - capLeft)] = ReadSurfacePixel(pSurface, x, y);
+			WriteSurfacePixel(pSurface, x, y, kCaptureSentinel);
 		}
 	}
 // Units are drawn with a depth test against the world's Z buffer, so whatever the capture
@@ -1969,6 +2030,7 @@ pUnit->Facing.set(oldFacing);
 pUnit->TurretFacing.set(oldTurretFacing);
 if (airCapture && pLoco)
 pLoco->Do_Turn(oldFacing);
+		PixelLockGuard pixelLockCompare(pSurface);
 	for (int y = capTop; y < capBottom; ++y)
 	{
 		const int insideY = y - patch.Top;
@@ -1980,7 +2042,7 @@ pLoco->Do_Turn(oldFacing);
 			const DWORD origin = before[(y - capTop) * kBeforeStride + (x - capLeft)];
 			if (insideX >= 0 && insideX < kGhostWidth && insideY >= 0 && insideY < kGhostHeight)
 			{
-				const DWORD painted = pSurface->GetPixel(&pixel);
+				const DWORD painted = ReadSurfacePixel(pSurface, x, y);
 				const bool changed = (painted != kCaptureSentinel);
 				outMask[insideY * kGhostWidth + insideX] = changed ? 1 : 0;
 
@@ -2003,13 +2065,14 @@ pLoco->Do_Turn(oldFacing);
 	// engine, so it only cost a full box walk per capture.
 	const bool behindOk = fullOk;
 	// Put the flooded ground back before anything else can look at the surface.
+	PixelLockGuard pixelLockRestore(pSurface);
 	for (int y = capTop; y < capBottom; ++y)
 	{
 		for (int x = capLeft; x < capRight; ++x)
 		{
 			pixel.X = static_cast<short>(x);
 			pixel.Y = static_cast<short>(y);
-			pSurface->SetPixel(&pixel, before[(y - capTop) * kBeforeStride + (x - capLeft)]);
+			WriteSurfacePixel(pSurface, x, y, before[(y - capTop) * kBeforeStride + (x - capLeft)]);
 		}
 	}
 	// The borrowed draw can paint past the saved rectangle on tall or tilted models, and those
