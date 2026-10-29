@@ -1449,6 +1449,7 @@ return;
 	static int lastDrawFrame = -1;
 	if (lastDrawFrame == frameId_)
 		return;
+	lastDrawFrame = frameId_;
 	++gDrawCalls;
 
 	TacticalClass* pTactical = TacticalClass::Instance;
