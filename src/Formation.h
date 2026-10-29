@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <YRPP.h>
 
@@ -22,7 +22,7 @@ public:
 	void Update();
 
 // 世界绘制之后调用：只负责把缓存里的剪影贴上去。
-	void DrawPreview();
+	void DrawPreview(bool late);
 
 // 手势过程中返回真，让引擎的点击处理让路；
 // 否则松开左键会被当成一次普通移动命令。
@@ -214,6 +214,7 @@ static constexpr int kFacingDeadband = 1638;   // 约 9 度（1/65536 圈为单�
 
 	// Advances once per frame; keeps engine-side ghost capture to one per frame.
 	int frameId_ = 0;
+	int lateDrawFrame_ = -1;
 
 	TechnoClass* units_[256] = {};
 	int unitCount_ = 0;

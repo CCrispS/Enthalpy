@@ -1,4 +1,4 @@
-// Enthalpy 鈥斺€?灏ら噷鐨勫浠囥€岀孩鑹茶鎴? 寮忓垪闃熴€嶇嫭绔?Syringe 鎻掍欢銆?
+﻿// Enthalpy 鈥斺€?灏ら噷鐨勫浠囥€岀孩鑹茶鎴? 寮忓垪闃熴€嶇嫭绔?Syringe 鎻掍欢銆?
 //
 // 姣忓抚鐨勬墽琛岄『搴忥細
 //   1. Update()        璇婚紶鏍囥€佽窇鎵嬪娍鐘舵€佹満銆佹妸宸插埌浣嶇殑鍗曚綅閽夊湪鏍煎瓙閲屻€侀┍鍔ㄦ渶缁堟湞鍚戯紱
@@ -1425,7 +1425,7 @@ bool FormationController::ShouldSuppressClick(){
 // 鍙敤缂撳瓨鐢婚瑙堛€備笉鑳藉湪杩欓噷鎹曡幏鈥斺€旈偅浼氭妸銆屽€熸潵鐨勫崟浣嶃€嶇敾杩涙鍦ㄦ覆鏌撶殑杩欎竴甯э紱
 // 鎹曡幏鏀惧湪鏇存棭鐨?Update() 閲岋紝閭ｄ竴甯х殑涓栫晫缁樺埗浼氭妸鐥曡抗瑕嗙洊鎺夈€?
 // 姣忓抚鍙厑璁镐竴閬嶏細娣峰悎涓ら亶绛変簬鎶婇€忔槑搴︾炕鍊嶏紝ini 璋冧簡涔熺湅涓嶅嚭鏁堟灉銆?
-void FormationController::DrawPreview(){
+void FormationController::DrawPreview(bool late){
 	static long long lastDrawTick = 0;
 	LARGE_INTEGER nowTick; QueryPerformanceCounter(&nowTick);
 	LARGE_INTEGER freq; QueryPerformanceFrequency(&freq);
@@ -1445,12 +1445,20 @@ return;
 	if (state_ != State::Dragging || slotCount_ <= 0)
 		return;
 
+	// Two hooks can report the same frame: 0x6D9134 paints after the world, 0x6D9076 paints before it
+	// and only exists because some maps never execute the late one.  Never let the early paint own a
+	// frame while the late hook is alive, otherwise whatever it drew is covered by the terrain and the
+	// silhouettes simply disappear on those maps.
+	if (late)
+		lateDrawFrame_ = frameId_;
+	else if (lateDrawFrame_ >= frameId_ - 1)
+		return;
+
 	// One pass per frame keeps the blend opacity honest.
 	static int lastDrawFrame = -1;
 	if (lastDrawFrame == frameId_)
 		return;
 	lastDrawFrame = frameId_;
-	++gDrawCalls;
 
 	TacticalClass* pTactical = TacticalClass::Instance;
 	if (!pTactical)
